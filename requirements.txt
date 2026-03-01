@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pandas
+scikit-learn
+streamlit
+plotly
+faker
+requests
+pytest
+httpx
