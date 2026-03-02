@@ -53,6 +53,7 @@ streamlit run app.py
 ```
 
 Then open:
+
 - Frontend UI: `http://127.0.0.1:8501`
 - Backend docs: `http://127.0.0.1:8000/docs`
 
@@ -144,6 +145,11 @@ pytest -q
 
 ## Deploy to Streamlit Community Cloud
 
+Required deploy files in repo root:
+- `app.py`
+- `requirements.txt`
+- `runtime.txt` (set to `python-3.11`)
+
 1. Push this project to GitHub.
 2. Go to `https://share.streamlit.io` and sign in.
 3. Click **New app** and select your repo.
@@ -175,6 +181,7 @@ After deployment, you will get a backend URL like:
 `https://riskguard-api.onrender.com`
 
 Validate endpoints:
+
 - `https://<your-render-url>/health`
 - `https://<your-render-url>/docs`
 - `https://<your-render-url>/analyze-transaction`
