@@ -166,9 +166,12 @@ In deployed Streamlit app, set **API Settings → Analyze endpoint** to your pub
 
 `https://<your-backend-domain>/analyze-transaction`
 
-You can also input just the backend base URL (for example `https://riskguard-mvp.onrender.com`); the app auto-appends `/analyze-transaction`.
+Optional (recommended): set Streamlit Cloud Secrets or environment variable:
+
+`BACKEND_API_URL = "https://<your-backend-domain>/analyze-transaction"`
 
 If backend is not reachable, the UI still loads trends and shows a warning in sidebar.
+On Render free tier, first request can be delayed by cold start; app includes retry and longer read timeout.
 
 ## Deploy Backend to Render
 
