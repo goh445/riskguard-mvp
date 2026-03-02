@@ -161,6 +161,27 @@ In deployed Streamlit app, set **API Settings → Analyze endpoint** to your pub
 
 If backend is not reachable, the UI still loads trends and shows a warning in sidebar.
 
+## Deploy Backend to Render
+
+This repository includes `render.yaml` and `requirements.api.txt` for FastAPI backend deployment.
+
+### Option A: Blueprint (recommended)
+
+1. Open: `https://dashboard.render.com/blueprint/new?repo=https://github.com/goh445/riskguard-mvp`
+2. Connect GitHub repo and click **Apply**.
+3. Wait for build and deploy.
+
+After deployment, you will get a backend URL like:
+`https://riskguard-api.onrender.com`
+
+Validate endpoints:
+- `https://<your-render-url>/health`
+- `https://<your-render-url>/docs`
+- `https://<your-render-url>/analyze-transaction`
+
+Then set Streamlit sidebar endpoint to:
+`https://<your-render-url>/analyze-transaction`
+
 ## Quick Local Frontend Preview
 
 To view the same Streamlit page locally:
