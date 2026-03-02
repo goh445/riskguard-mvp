@@ -85,6 +85,16 @@ Set these environment variables on Render:
 - `RATE_LIMIT_WINDOW_SECONDS` = window size in seconds (default `60`)
 - `AUDIT_DB_PATH` = SQLite file path (default `data/riskguard_audit.db`)
 
+Observability headers returned on every API response:
+
+- `X-Request-ID`
+- `X-Process-Time-Ms`
+
+Input validation hardening:
+
+- `timestamp` must be timezone-aware and in Malaysia offset (`UTC+08:00`)
+- `user_id` and `city` are trimmed and cannot be blank
+
 When `RISKGUARD_API_KEY` is set, include header:
 
 `X-API-Key: <your-key>`

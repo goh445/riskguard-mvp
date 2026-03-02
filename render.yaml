@@ -4,8 +4,15 @@ services:
     runtime: python
     plan: free
     autoDeploy: true
+    healthCheckPath: /health
     buildCommand: pip install -r requirements.api.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: USE_ML_ANOMALY
-        value: "false"
+        value: 'false'
+      - key: RATE_LIMIT_REQUESTS
+        value: '120'
+      - key: RATE_LIMIT_WINDOW_SECONDS
+        value: '60'
+      - key: AUDIT_DB_PATH
+        value: 'data/riskguard_audit.db'
