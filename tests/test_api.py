@@ -35,3 +35,12 @@ def test_analyze_transaction_response_schema() -> None:
     assert isinstance(body["flags"], list)
     assert isinstance(body["reasons"], list)
     assert isinstance(body["debug"], dict)
+
+
+def test_ops_summary_endpoint_shape() -> None:
+    client = TestClient(app)
+    response = client.get("/ops/summary")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body.keys()) == {"window_hours", "total_analyzed", "avg_score", "high_risk_count"}

@@ -8,6 +8,9 @@ Financial fraud detection and risk scoring system built with FastAPI + Streamlit
 - Risk score mapping: Low / Medium / High.
 - Synthetic historical data generation (1000 transactions).
 - Optional IsolationForest anomaly debug (`USE_ML_ANOMALY=true`).
+- Optional API key authentication (`X-API-Key`).
+- Per-client rate limiting with configurable thresholds.
+- SQLite audit trail and 24-hour ops summary endpoint.
 - Streamlit dashboard with score display and trend charts.
 
 ## Project Structure
@@ -68,6 +71,23 @@ uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 ## API Endpoint
 
 `POST /analyze-transaction`
+
+Additional operational endpoint:
+
+- `GET /ops/summary`
+
+## Backend Production Config
+
+Set these environment variables on Render:
+
+- `RISKGUARD_API_KEY` = strong secret value (enables API key auth)
+- `RATE_LIMIT_REQUESTS` = max requests per window (default `60`)
+- `RATE_LIMIT_WINDOW_SECONDS` = window size in seconds (default `60`)
+- `AUDIT_DB_PATH` = SQLite file path (default `data/riskguard_audit.db`)
+
+When `RISKGUARD_API_KEY` is set, include header:
+
+`X-API-Key: <your-key>`
 
 ### Sample curl
 
@@ -169,6 +189,7 @@ In deployed Streamlit app, set **API Settings → Analyze endpoint** to your pub
 Optional (recommended): set Streamlit Cloud Secrets or environment variable:
 
 `BACKEND_API_URL = "https://<your-backend-domain>/analyze-transaction"`
+`BACKEND_API_KEY = "<your-api-key-if-enabled>"`
 
 If backend is not reachable, the UI still loads trends and shows a warning in sidebar.
 On Render free tier, first request can be delayed by cold start; app includes retry and longer read timeout.

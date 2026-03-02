@@ -16,6 +16,7 @@ from data.generate_mock_data import save_mock_transactions
 
 
 API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-transaction")
+API_KEY = os.getenv("BACKEND_API_KEY", "")
 DATA_FILE = "data/mock_transactions.csv"
 
 
@@ -41,11 +42,12 @@ def load_trends_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     return day_df, hour_df
 
 
-def check_backend_health(base_analyze_url: str) -> tuple[bool, str]:
+def check_backend_health(base_analyze_url: str, api_key: str) -> tuple[bool, str]:
     """Check backend health endpoint based on analyze URL."""
     health_url = base_analyze_url.replace("/analyze-transaction", "/health")
+    headers = {"X-API-Key": api_key} if api_key else None
     try:
-        response = requests.get(health_url, timeout=3)
+        response = requests.get(health_url, timeout=3, headers=headers)
         if response.status_code == 200:
             return True, health_url
     except requests.RequestException:
@@ -53,12 +55,13 @@ def check_backend_health(base_analyze_url: str) -> tuple[bool, str]:
     return False, health_url
 
 
-def call_analyze_api(api_url: str, payload: dict[str, object]) -> dict[str, object]:
+def call_analyze_api(api_url: str, payload: dict[str, object], api_key: str) -> dict[str, object]:
     """Call backend analyze API with retries to handle cold starts."""
     last_exception: Exception | None = None
+    headers = {"X-API-Key": api_key} if api_key else None
     for attempt in range(1, 4):
         try:
-            response = requests.post(api_url, json=payload, timeout=(8, 45))
+            response = requests.post(api_url, json=payload, timeout=(8, 45), headers=headers)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as exc:
@@ -76,7 +79,8 @@ st.title("RiskGuard MVP — Fraud Detection & Risk Scoring")
 with st.sidebar:
     st.header("API Settings")
     api_url = st.text_input("Analyze endpoint", value=API_URL)
-    is_healthy, health_url = check_backend_health(api_url)
+    api_key = st.text_input("API Key (optional)", value=API_KEY, type="password")
+    is_healthy, health_url = check_backend_health(api_url, api_key)
     if is_healthy:
         st.success(f"Backend OK: {health_url}")
     else:
@@ -107,7 +111,7 @@ if submitted:
     }
     try:
         with st.spinner("Analyzing transaction... (first request may be slower due to backend cold start)"):
-            result = call_analyze_api(api_url=api_url, payload=payload)
+            result = call_analyze_api(api_url=api_url, payload=payload, api_key=api_key)
 
         st.metric(label="Risk Score", value=f"{result['score']} ({result['status']})")
 

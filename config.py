@@ -17,6 +17,10 @@ class Settings:
     risk_cap: int = int(os.getenv("RISK_CAP", "100"))
     use_ml_anomaly: bool = os.getenv("USE_ML_ANOMALY", "false").lower() == "true"
     random_seed: int = int(os.getenv("RANDOM_SEED", "42"))
+    api_key: str = os.getenv("RISKGUARD_API_KEY", "")
+    rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
+    rate_limit_window_seconds: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+    audit_db_path: str = os.getenv("AUDIT_DB_PATH", "data/riskguard_audit.db")
 
 
 settings = Settings()
