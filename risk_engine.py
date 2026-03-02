@@ -45,7 +45,7 @@ class RiskEngine:
     def _train_optional_ml_model(self) -> None:
         """Train IsolationForest model when enabled."""
         if not settings.use_ml_anomaly:
-            logger.info("ML anomaly detection disabled via configuration")
+            logger.debug("ML anomaly detection disabled via configuration")
             return
         if IsolationForest is None:
             logger.warning("scikit-learn not installed; ML anomaly detection disabled")
