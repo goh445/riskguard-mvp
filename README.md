@@ -146,6 +146,7 @@ pytest -q
 ## Deploy to Streamlit Community Cloud
 
 Required deploy files in repo root:
+
 - `app.py`
 - `requirements.txt`
 - `runtime.txt` (set to `python-3.11`)
@@ -164,6 +165,8 @@ After deployment, your frontend URL will look like:
 In deployed Streamlit app, set **API Settings → Analyze endpoint** to your public backend endpoint, for example:
 
 `https://<your-backend-domain>/analyze-transaction`
+
+You can also input just the backend base URL (for example `https://riskguard-mvp.onrender.com`); the app auto-appends `/analyze-transaction`.
 
 If backend is not reachable, the UI still loads trends and shows a warning in sidebar.
 

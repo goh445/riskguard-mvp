@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
+import time
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -13,7 +15,7 @@ import streamlit as st
 from data.generate_mock_data import save_mock_transactions
 
 
-API_URL = "http://127.0.0.1:8000/analyze-transaction"
+API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-transaction")
 DATA_FILE = "data/mock_transactions.csv"
 
 
@@ -41,14 +43,42 @@ def load_trends_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def check_backend_health(base_analyze_url: str) -> tuple[bool, str]:
     """Check backend health endpoint based on analyze URL."""
-    health_url = base_analyze_url.replace("/analyze-transaction", "/health")
+    analyze_url = normalize_analyze_url(base_analyze_url)
+    health_url = analyze_url.replace("/analyze-transaction", "/health")
     try:
-        response = requests.get(health_url, timeout=3)
+        response = requests.get(health_url, timeout=10)
         if response.status_code == 200:
             return True, health_url
     except requests.RequestException:
         pass
     return False, health_url
+
+
+def normalize_analyze_url(url: str) -> str:
+    """Normalize analyze endpoint URL for user input convenience."""
+    cleaned = url.strip().rstrip("/")
+    if cleaned.endswith("/analyze-transaction"):
+        return cleaned
+    return f"{cleaned}/analyze-transaction"
+
+
+def call_analyze_api(api_url: str, payload: dict[str, object]) -> dict[str, object]:
+    """Call analyze API with timeout and one retry for cold-start scenarios."""
+    normalized = normalize_analyze_url(api_url)
+    try:
+        response = requests.post(normalized, json=payload, timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except requests.Timeout:
+        health_url = normalized.replace("/analyze-transaction", "/health")
+        try:
+            requests.get(health_url, timeout=30)
+        except requests.RequestException:
+            pass
+        time.sleep(1.5)
+        retry = requests.post(normalized, json=payload, timeout=45)
+        retry.raise_for_status()
+        return retry.json()
 
 
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
@@ -57,6 +87,8 @@ st.title("RiskGuard MVP — Fraud Detection & Risk Scoring")
 with st.sidebar:
     st.header("API Settings")
     api_url = st.text_input("Analyze endpoint", value=API_URL)
+    normalized_endpoint = normalize_analyze_url(api_url)
+    st.caption(f"Resolved endpoint: {normalized_endpoint}")
     is_healthy, health_url = check_backend_health(api_url)
     if is_healthy:
         st.success(f"Backend OK: {health_url}")
@@ -87,9 +119,7 @@ if submitted:
         "metadata": {},
     }
     try:
-        response = requests.post(api_url, json=payload, timeout=10)
-        response.raise_for_status()
-        result = response.json()
+        result = call_analyze_api(api_url, payload)
 
         st.metric(label="Risk Score", value=f"{result['score']} ({result['status']})")
 
@@ -106,6 +136,7 @@ if submitted:
             st.json(result.get("debug", {}))
     except requests.RequestException as exc:
         st.error(f"Failed to call API: {exc}")
+        st.info("If using Render free plan, first request may cold-start. Please retry once.")
 
 st.markdown("## Risk Trends")
 day_data, hour_data = load_trends_data()
