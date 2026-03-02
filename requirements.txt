@@ -3,6 +3,7 @@ uvicorn[standard]
 pandas
 scikit-learn
 streamlit
+altair<5
 plotly
 faker
 requests
