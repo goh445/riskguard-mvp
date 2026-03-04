@@ -132,8 +132,7 @@ with st.form("analyze_forex_form"):
         base_currency = st.text_input("Base Currency", value=preset_base)
         quote_currency = st.text_input("Quote Currency", value=preset_quote)
     with col2:
-        macro_stress = st.slider("Macro Stress (0-1)", min_value=0.0, max_value=1.0, value=0.4, step=0.05)
-        news_sentiment = st.slider("News Sentiment (-1 to 1)", min_value=-1.0, max_value=1.0, value=0.0, step=0.05)
+        st.info("Autonomous AI mode: macro/news parameters are auto-derived from global feeds and market data.")
         timestamp = st.text_input(
             "Timestamp (ISO8601, Malaysia TZ)",
             value=datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
@@ -146,10 +145,7 @@ if submitted:
         "base_currency": base_currency,
         "quote_currency": quote_currency,
         "timestamp": timestamp,
-        "metadata": {
-            "macro_stress": macro_stress,
-            "news_sentiment": news_sentiment,
-        },
+        "metadata": {},
     }
     try:
         with st.spinner("Analyzing forex market risk... (first request may be slower due to backend cold start)"):

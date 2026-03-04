@@ -125,9 +125,25 @@ class ForexGraphRiskEngine:
         metadata = request.metadata or {}
         sentiment = float(metadata.get("news_sentiment", 0.0))
         macro_stress = float(metadata.get("macro_stress", 0.0))
+        policy_uncertainty = float(metadata.get("policy_uncertainty", 0.0))
+        geopolitical_risk = float(metadata.get("geopolitical_risk", 0.0))
+        liquidity_risk = float(metadata.get("liquidity_risk", 0.0))
+        commodity_shock = float(metadata.get("commodity_shock", 0.0))
         if sentiment < -0.25 or macro_stress > 0.6:
             flags.append("macro_sentiment_stress")
             reasons.append("Macro/news signals suggest elevated directional stress")
+        if policy_uncertainty > 0.55:
+            flags.append("policy_uncertainty")
+            reasons.append("Policy uncertainty elevated from global central-bank and rates signals")
+        if geopolitical_risk > 0.55:
+            flags.append("geopolitical_risk")
+            reasons.append("Geopolitical conditions imply higher contagion risk")
+        if liquidity_risk > 0.55:
+            flags.append("liquidity_risk")
+            reasons.append("Liquidity-related stress signals are elevated")
+        if commodity_shock > 0.55:
+            flags.append("commodity_shock")
+            reasons.append("Commodity-linked volatility likely to spill over into FX pairs")
 
         score = 0.0
         score += min(observed_volatility * 2200, 35)
@@ -135,6 +151,10 @@ class ForexGraphRiskEngine:
         score += min(path_risk * 45, 20)
         score += min((base_centrality + quote_centrality) * 20, 15)
         score += max(0.0, min((-sentiment * 20) + (macro_stress * 10), 15))
+        score += min(policy_uncertainty * 8, 8)
+        score += min(geopolitical_risk * 8, 8)
+        score += min(liquidity_risk * 7, 7)
+        score += min(commodity_shock * 7, 7)
         score = min(100.0, score)
 
         debug: dict[str, Any] = {
@@ -143,7 +163,12 @@ class ForexGraphRiskEngine:
             "path_nodes": path_nodes,
             "path_risk": round(path_risk, 3),
             "sentiment": sentiment,
+            "news_sentiment": sentiment,
             "macro_stress": macro_stress,
+            "policy_uncertainty": policy_uncertainty,
+            "geopolitical_risk": geopolitical_risk,
+            "liquidity_risk": liquidity_risk,
+            "commodity_shock": commodity_shock,
             "observed_volatility": round(observed_volatility, 6),
             "spread_bps": round(spread_bps, 2),
             "market_data_source": metadata.get("market_data_source", "manual_or_unknown"),

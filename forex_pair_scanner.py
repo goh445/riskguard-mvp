@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from audit_store import AuditStore
 from forex_graph_engine import ForexGraphRiskEngine
 from forex_market_data import ForexMarketDataClient
+from news_intelligence import GlobalNewsIntelligence
 from models import ForexRiskRequest
 
 
@@ -41,10 +42,12 @@ class ForexPairScanner:
         audit_store: AuditStore,
         market_data: ForexMarketDataClient,
         graph_engine: ForexGraphRiskEngine,
+        news_intelligence: GlobalNewsIntelligence,
     ) -> None:
         self.audit_store = audit_store
         self.market_data = market_data
         self.graph_engine = graph_engine
+        self.news_intelligence = news_intelligence
 
     @staticmethod
     def _today_kl() -> str:
@@ -59,9 +62,13 @@ class ForexPairScanner:
 
     def _scan_one(self, base: str, quote: str) -> None:
         metrics = self.market_data.fetch_snapshot(base, quote)
+        news_signals = self.news_intelligence.derive_signals()
         observed_volatility = float(metrics["observed_volatility"])
         spread_bps = float(metrics["spread_bps"])
-        macro_stress, news_sentiment = self._derived_context(observed_volatility, spread_bps)
+        derived_macro_stress, derived_news_sentiment = self._derived_context(observed_volatility, spread_bps)
+
+        macro_stress = float(news_signals.get("macro_stress", derived_macro_stress))
+        news_sentiment = float(news_signals.get("news_sentiment", derived_news_sentiment))
 
         request = ForexRiskRequest(
             base_currency=base,
@@ -72,9 +79,17 @@ class ForexPairScanner:
             metadata={
                 "macro_stress": macro_stress,
                 "news_sentiment": news_sentiment,
+                "policy_uncertainty": news_signals.get("policy_uncertainty", 0.0),
+                "geopolitical_risk": news_signals.get("geopolitical_risk", 0.0),
+                "liquidity_risk": news_signals.get("liquidity_risk", 0.0),
+                "commodity_shock": news_signals.get("commodity_shock", 0.0),
                 "market_data_source": metrics["source"],
                 "market_data_sample_size": metrics["sample_size"],
                 "market_last_rate": metrics["last_rate"],
+                "market_last_timestamp": metrics.get("last_market_timestamp"),
+                "market_data_fetched_at_utc": metrics.get("fetched_at_utc"),
+                "news_source": news_signals.get("news_source", "unknown"),
+                "news_updated_at_utc": news_signals.get("news_updated_at_utc"),
                 "scan_mode": "daily_auto",
             },
         )

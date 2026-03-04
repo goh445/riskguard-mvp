@@ -14,6 +14,7 @@ Financial fraud detection and risk scoring system built with FastAPI + Streamlit
 - Zero-cost forex risk graph analytics with hidden-link detection (`networkx`).
 - Free market data enrichment from Frankfurter API with fallback model.
 - Commodity-linked coverage (Gold/Silver/Platinum/Palladium/Brent/WTI) with free Yahoo market feed.
+- Autonomous AI parameter tuning using global news + market data (no manual slider tuning).
 - Streamlit dashboard with score display and trend charts.
 
 ## Project Structure
@@ -149,6 +150,14 @@ Recommended policy:
 - keep `news_sentiment` as event overlay (major headlines)
 - escalate review when both are stressed (`macro_stress > 0.6` and `news_sentiment < -0.25`)
 
+In this system, these values are now produced automatically by backend AI tuning:
+
+- `news_sentiment`: derived from global RSS headline polarity
+- `macro_stress`: derived from global risk terms + market stress context
+- extra auto parameters: `policy_uncertainty`, `geopolitical_risk`, `liquidity_risk`, `commodity_shock`
+
+Manual tuning is no longer required in the Streamlit UI.
+
 ## Backend Production Config
 
 Set these environment variables on Render:
@@ -157,6 +166,9 @@ Set these environment variables on Render:
 - `RATE_LIMIT_REQUESTS` = max requests per window (default `60`)
 - `RATE_LIMIT_WINDOW_SECONDS` = window size in seconds (default `60`)
 - `AUDIT_DB_PATH` = SQLite file path (default `data/riskguard_audit.db`)
+- `AUTO_PARAMETER_TUNING` = `true|false` (default `true`)
+- `NEWS_FETCH_TIMEOUT_SECONDS` = news fetch timeout (default `2`)
+- `NEWS_CACHE_TTL_SECONDS` = cache TTL seconds (default `600`)
 
 Observability headers returned on every API response:
 

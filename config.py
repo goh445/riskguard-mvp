@@ -21,6 +21,9 @@ class Settings:
     rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
     rate_limit_window_seconds: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
     audit_db_path: str = os.getenv("AUDIT_DB_PATH", "data/riskguard_audit.db")
+    auto_parameter_tuning: bool = os.getenv("AUTO_PARAMETER_TUNING", "true").lower() == "true"
+    news_fetch_timeout_seconds: int = int(os.getenv("NEWS_FETCH_TIMEOUT_SECONDS", "2"))
+    news_cache_ttl_seconds: int = int(os.getenv("NEWS_CACHE_TTL_SECONDS", "600"))
 
 
 settings = Settings()

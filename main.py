@@ -17,6 +17,7 @@ from data_utils import DATA_FILE, load_transactions
 from forex_market_data import ForexMarketDataClient
 from forex_graph_engine import ForexGraphRiskEngine
 from forex_pair_scanner import ForexPairScanner
+from news_intelligence import GlobalNewsIntelligence
 from models import ForexRiskRequest, ForexRiskResponse, RiskResponse, TransactionRequest
 from risk_engine import RiskEngine
 from service_controls import SlidingWindowRateLimiter, is_api_key_valid
@@ -64,6 +65,10 @@ def _build_engine() -> RiskEngine:
 engine = _build_engine()
 forex_graph_engine = ForexGraphRiskEngine()
 forex_market_data = ForexMarketDataClient()
+news_intelligence = GlobalNewsIntelligence(
+    timeout_seconds=settings.news_fetch_timeout_seconds,
+    cache_ttl_seconds=settings.news_cache_ttl_seconds,
+)
 rate_limiter = SlidingWindowRateLimiter(
     max_requests=settings.rate_limit_requests,
     window_seconds=settings.rate_limit_window_seconds,
@@ -73,6 +78,7 @@ forex_pair_scanner = ForexPairScanner(
     audit_store=audit_store,
     market_data=forex_market_data,
     graph_engine=forex_graph_engine,
+    news_intelligence=news_intelligence,
 )
 
 
@@ -147,20 +153,27 @@ def analyze_forex_risk(
 ) -> ForexRiskResponse:
     """Analyze forex market risk using network contagion and hidden-link logic."""
     metrics = forex_market_data.fetch_snapshot(payload.base_currency, payload.quote_currency)
+    news_signals = news_intelligence.derive_signals() if settings.auto_parameter_tuning else {}
+    user_metadata = payload.metadata or {}
+
+    merged_metadata = {
+        **user_metadata,
+        **news_signals,
+        "market_data_source": metrics["source"],
+        "market_data_sample_size": metrics["sample_size"],
+        "market_last_rate": metrics["last_rate"],
+        "market_last_timestamp": metrics.get("last_market_timestamp"),
+        "market_data_fetched_at_utc": metrics.get("fetched_at_utc"),
+        "auto_parameter_tuning": settings.auto_parameter_tuning,
+    }
+
     enriched_payload = payload.model_copy(
         update={
             "observed_volatility": payload.observed_volatility
             if payload.observed_volatility is not None
             else metrics["observed_volatility"],
             "spread_bps": payload.spread_bps if payload.spread_bps is not None else metrics["spread_bps"],
-            "metadata": {
-                **(payload.metadata or {}),
-                "market_data_source": metrics["source"],
-                "market_data_sample_size": metrics["sample_size"],
-                "market_last_rate": metrics["last_rate"],
-                "market_last_timestamp": metrics.get("last_market_timestamp"),
-                "market_data_fetched_at_utc": metrics.get("fetched_at_utc"),
-            },
+            "metadata": merged_metadata,
         }
     )
     return forex_graph_engine.analyze(enriched_payload)
