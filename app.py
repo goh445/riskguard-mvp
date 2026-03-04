@@ -108,7 +108,7 @@ def pair_category(pair: str) -> str:
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
 st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
 st.caption(f"Latest UI refresh (UTC): {datetime.now(ZoneInfo('UTC')).isoformat(timespec='seconds')}")
-st.info("AI auto-tuning is always ON: global news + market data are automatically used in every analysis.")
+st.info("AI auto-tuning is always ON: dynamic global news discovery + market data are automatically used in every analysis.")
 
 if "forex_history" not in st.session_state:
     st.session_state.forex_history = []
@@ -264,10 +264,14 @@ with tab_analyze:
             debug_payload = result.get("debug", {})
             ai_col_1, ai_col_2, ai_col_3 = st.columns(3)
             ai_col_1.metric("Auto Parameter Tuning", "ON")
-            ai_col_2.metric("Gemini Enhancement", "ON" if debug_payload.get("gemini_enabled") else "OFF")
+            ai_col_2.metric("AI News Engine", "ON" if debug_payload.get("ai_news_engine", True) else "OFF")
             ai_col_3.metric(
-                "News Feeds",
-                f"{debug_payload.get('successful_feed_count', 0)}/{debug_payload.get('active_feed_count', 0)}",
+                "LLM Boost (Gemini)",
+                "ON" if debug_payload.get("gemini_enabled") else "OFF",
+            )
+            st.caption(
+                f"News feeds reached: {debug_payload.get('successful_feed_count', 0)}/{debug_payload.get('active_feed_count', 0)} "
+                f"(static {debug_payload.get('static_feed_count', 0)} + dynamic {debug_payload.get('dynamic_feed_count', 0)})"
             )
             st.caption(
                 f"News source: {debug_payload.get('news_source', 'unknown')} | "

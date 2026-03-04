@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
+from urllib.parse import quote_plus
 from xml.etree import ElementTree
 
 import requests
@@ -22,6 +23,28 @@ class GlobalNewsIntelligence:
         "https://feeds.skynews.com/feeds/rss/world.xml",
         "https://www.aljazeera.com/xml/rss/all.xml",
         "https://www.ft.com/rss/world",
+    ]
+
+    GOOGLE_NEWS_REGIONS = [
+        ("US", "en"),
+        ("GB", "en"),
+        ("SG", "en"),
+        ("MY", "en"),
+        ("IN", "en"),
+        ("JP", "en"),
+        ("AU", "en"),
+        ("AE", "en"),
+    ]
+
+    TOPIC_QUERIES = [
+        "forex market volatility",
+        "currency crisis sanctions",
+        "central bank rate hike cut",
+        "liquidity funding stress",
+        "geopolitical conflict oil shock",
+        "commodity prices gold oil",
+        "crypto market liquidation",
+        "emerging market debt risk",
     ]
 
     POSITIVE_TERMS = {
@@ -97,18 +120,42 @@ class GlobalNewsIntelligence:
             ):
                 return self._cached_signals
 
-        headlines, successful_feed_count, active_feed_count = self._fetch_headlines(limit=80)
+        static_sources = self.get_feed_sources()
+        dynamic_sources = self._build_dynamic_news_queries(max_queries=24)
+        merged_sources = list(dict.fromkeys(static_sources + dynamic_sources))
+
+        headlines, successful_feed_count, active_feed_count = self._fetch_headlines(
+            limit=120,
+            sources=merged_sources,
+        )
         signals = self._signals_from_headlines(
             headlines=headlines,
             successful_feed_count=successful_feed_count,
             active_feed_count=active_feed_count,
         )
         signals = self._maybe_enhance_with_gemini(signals, headlines)
+        signals["ai_news_engine"] = True
+        signals["static_feed_count"] = len(static_sources)
+        signals["dynamic_feed_count"] = len(dynamic_sources)
         signals["gemini_enabled"] = bool(self.use_gemini_news and self.gemini_api_key)
         with self._lock:
             self._cached_signals = signals
             self._cached_at_epoch = now_epoch
         return signals
+
+    def _build_dynamic_news_queries(self, max_queries: int = 24) -> list[str]:
+        """Build dynamic global news discovery RSS endpoints across regions/topics."""
+        urls: list[str] = []
+        for region, language in self.GOOGLE_NEWS_REGIONS:
+            for query in self.TOPIC_QUERIES:
+                encoded_query = quote_plus(query)
+                urls.append(
+                    "https://news.google.com/rss/search"
+                    f"?q={encoded_query}&hl={language}&gl={region}&ceid={region}:{language}"
+                )
+                if len(urls) >= max_queries:
+                    return urls
+        return urls
 
     def _maybe_enhance_with_gemini(self, baseline: dict[str, Any], headlines: list[str]) -> dict[str, Any]:
         """Enhance baseline signals using Gemini if configured."""
@@ -176,10 +223,14 @@ class GlobalNewsIntelligence:
             return None
         return match.group(0)
 
-    def _fetch_headlines(self, limit: int = 50) -> tuple[list[str], int, int]:
+    def _fetch_headlines(
+        self,
+        limit: int = 50,
+        sources: list[str] | None = None,
+    ) -> tuple[list[str], int, int]:
         headlines: list[str] = []
         seen: set[str] = set()
-        sources = self.get_feed_sources()
+        sources = sources if sources is not None else self.get_feed_sources()
         successful_feeds = 0
         for feed in sources:
             try:
