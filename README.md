@@ -13,6 +13,7 @@ Financial fraud detection and risk scoring system built with FastAPI + Streamlit
 - SQLite audit trail and 24-hour ops summary endpoint.
 - Zero-cost forex risk graph analytics with hidden-link detection (`networkx`).
 - Free market data enrichment from Frankfurter API with fallback model.
+- Commodity-linked coverage (Gold/Silver/Platinum/Palladium/Brent/WTI) with free Yahoo market feed.
 - Streamlit dashboard with score display and trend charts.
 
 ## Project Structure
@@ -105,9 +106,14 @@ Response includes `hidden_links` and network debug fields to expose indirect con
 ## Daily Operational Scan
 
 `/ops/top-risk-pairs` will automatically run a daily scan of major FX pairs (once per day, KL date) and persist rankings.
+It includes major commodity-linked pairs as well (e.g., `XAU/USD`, `XBR/USD`).
 
 - `limit`: number of pairs to return (1-20)
 - `force_refresh=true`: rerun full scan immediately
+
+Response includes:
+
+- `latest_update_utc`: latest update timestamp among ranked rows
 
 Example:
 
@@ -124,6 +130,24 @@ Are they necessary?
 
 - **Not mandatory**: backend can run without manual inputs and auto-derive from market data.
 - **High value in production**: adding these two signals improves early warning during regime shifts where pure price stats lag.
+
+Practical usage guide:
+
+- `macro_stress`
+  - 0.0-0.3: stable regime
+  - 0.3-0.6: caution (policy/event sensitivity rising)
+  - 0.6-1.0: stressed regime (tighten limits, increase monitoring)
+
+- `news_sentiment`
+  - 0.2 to 1.0: positive flow
+  - -0.2 to 0.2: neutral flow
+  - -1.0 to -0.2: negative pressure (watch gap risk and liquidity thinning)
+
+Recommended policy:
+
+- keep `macro_stress` as system-level signal (hourly/daily updates)
+- keep `news_sentiment` as event overlay (major headlines)
+- escalate review when both are stressed (`macro_stress > 0.6` and `news_sentiment < -0.25`)
 
 ## Backend Production Config
 

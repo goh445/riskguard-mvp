@@ -26,7 +26,25 @@ class ForexGraphRiskEngine:
         self._build_default_graph()
 
     def _build_default_graph(self) -> None:
-        currencies = ["USD", "EUR", "JPY", "GBP", "CHF", "AUD", "NZD", "CAD", "CNY", "SGD", "MYR"]
+        currencies = [
+            "USD",
+            "EUR",
+            "JPY",
+            "GBP",
+            "CHF",
+            "AUD",
+            "NZD",
+            "CAD",
+            "CNY",
+            "SGD",
+            "MYR",
+            "XAU",
+            "XAG",
+            "XPT",
+            "XPD",
+            "XBR",
+            "XWT",
+        ]
         self.graph.add_nodes_from(currencies)
 
         edges = [
@@ -45,6 +63,14 @@ class ForexGraphRiskEngine:
             ("AUD", "NZD", 0.15),
             ("SGD", "MYR", 0.18),
             ("CNY", "SGD", 0.25),
+            ("XAU", "USD", 0.34),
+            ("XAG", "USD", 0.33),
+            ("XPT", "USD", 0.31),
+            ("XPD", "USD", 0.31),
+            ("XBR", "USD", 0.36),
+            ("XWT", "USD", 0.36),
+            ("XAU", "EUR", 0.28),
+            ("XBR", "EUR", 0.3),
         ]
         for left, right, contagion_weight in edges:
             self.graph.add_edge(left, right, contagion_weight=contagion_weight)
@@ -120,6 +146,9 @@ class ForexGraphRiskEngine:
             "macro_stress": macro_stress,
             "observed_volatility": round(observed_volatility, 6),
             "spread_bps": round(spread_bps, 2),
+            "market_data_source": metadata.get("market_data_source", "manual_or_unknown"),
+            "market_data_fetched_at_utc": metadata.get("market_data_fetched_at_utc"),
+            "market_last_timestamp": metadata.get("market_last_timestamp"),
             "raw_score": round(score, 2),
         }
 

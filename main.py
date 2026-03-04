@@ -158,6 +158,8 @@ def analyze_forex_risk(
                 "market_data_source": metrics["source"],
                 "market_data_sample_size": metrics["sample_size"],
                 "market_last_rate": metrics["last_rate"],
+                "market_last_timestamp": metrics.get("last_market_timestamp"),
+                "market_data_fetched_at_utc": metrics.get("fetched_at_utc"),
             },
         }
     )

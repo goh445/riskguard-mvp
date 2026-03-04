@@ -27,6 +27,12 @@ class ForexPairScanner:
         ("USD", "MYR"),
         ("EUR", "GBP"),
         ("EUR", "CHF"),
+        ("XAU", "USD"),
+        ("XAG", "USD"),
+        ("XPT", "USD"),
+        ("XPD", "USD"),
+        ("XBR", "USD"),
+        ("XWT", "USD"),
     ]
 
     def __init__(
@@ -100,8 +106,12 @@ class ForexPairScanner:
         safe_limit = max(1, min(limit, 20))
         scan_date = self.ensure_daily_scan(force_refresh=force_refresh)
         rankings = self.audit_store.get_top_risk_pairs(scan_date=scan_date, limit=safe_limit)
+        latest_update_utc = None
+        if rankings:
+            latest_update_utc = max(str(row.get("updated_at", "")) for row in rankings)
         return {
             "scan_date": scan_date,
             "pair_count": len(rankings),
+            "latest_update_utc": latest_update_utc,
             "rankings": rankings,
         }

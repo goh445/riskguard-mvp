@@ -91,6 +91,7 @@ def call_top_pairs_api(api_url: str, api_key: str, limit: int = 10) -> dict[str,
 
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
 st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
+st.caption(f"Latest UI refresh (UTC): {datetime.now(ZoneInfo('UTC')).isoformat(timespec='seconds')}")
 
 if "forex_history" not in st.session_state:
     st.session_state.forex_history = []
@@ -107,13 +108,29 @@ with st.sidebar:
         st.success(f"Backend OK: {health_url}")
     else:
         st.warning(f"Backend unreachable: {health_url}")
+    auto_refresh = st.toggle("Auto refresh leaderboard", value=False)
+    refresh_seconds = st.slider("Refresh interval (sec)", min_value=15, max_value=120, value=30, step=5)
 
 st.subheader("Analyze Forex Market Risk")
 with st.form("analyze_forex_form"):
     col1, col2 = st.columns(2)
     with col1:
-        base_currency = st.text_input("Base Currency", value="USD")
-        quote_currency = st.text_input("Quote Currency", value="MYR")
+        pair_preset = st.selectbox(
+            "Pair Preset",
+            options=[
+                "USD/MYR",
+                "EUR/USD",
+                "USD/JPY",
+                "XAU/USD",
+                "XAG/USD",
+                "XBR/USD",
+                "Custom",
+            ],
+            index=0,
+        )
+        preset_base, preset_quote = (pair_preset.split("/") if pair_preset != "Custom" else ("USD", "MYR"))
+        base_currency = st.text_input("Base Currency", value=preset_base)
+        quote_currency = st.text_input("Quote Currency", value=preset_quote)
     with col2:
         macro_stress = st.slider("Macro Stress (0-1)", min_value=0.0, max_value=1.0, value=0.4, step=0.05)
         news_sentiment = st.slider("News Sentiment (-1 to 1)", min_value=-1.0, max_value=1.0, value=0.0, step=0.05)
@@ -151,8 +168,15 @@ if submitted:
         st.write(result.get("flags", []))
         st.markdown("### Hidden Links")
         st.write(result.get("hidden_links", []))
+        debug_payload = result.get("debug", {})
+        market_source = debug_payload.get("market_data_source", "unknown")
+        market_ts = debug_payload.get("market_last_timestamp")
+        fetched_ts = debug_payload.get("market_data_fetched_at_utc")
+        st.caption(
+            f"Market source: {market_source} | Market timestamp: {market_ts} | Data fetched at (UTC): {fetched_ts}"
+        )
         with st.expander("Debug"):
-            st.json(result.get("debug", {}))
+            st.json(debug_payload)
 
         st.session_state.forex_history.append(
             {
@@ -182,6 +206,7 @@ if st.button("Refresh Daily Risk Leaderboard"):
         with st.spinner("Fetching top risk pairs..."):
             top_pairs = call_top_pairs_api(api_url=normalized_api_url, api_key=api_key, limit=10)
         st.caption(f"Scan date: {top_pairs.get('scan_date')}")
+        st.caption(f"Latest leaderboard update (UTC): {top_pairs.get('latest_update_utc')}")
         rankings = top_pairs.get("rankings", [])
         if rankings:
             table_rows = [
@@ -198,3 +223,7 @@ if st.button("Refresh Daily Risk Leaderboard"):
             st.info("No rankings available yet.")
     except requests.RequestException as exc:
         st.error(f"Failed to fetch leaderboard: {exc}")
+
+if auto_refresh:
+    time.sleep(refresh_seconds)
+    st.rerun()

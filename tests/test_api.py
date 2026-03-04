@@ -71,6 +71,7 @@ def test_ops_top_risk_pairs_endpoint_shape(monkeypatch) -> None:
             return {
                 "scan_date": "2026-03-04",
                 "pair_count": 2,
+                "latest_update_utc": "2026-03-04T10:00:00+00:00",
                 "rankings": [
                     {
                         "pair": "USD/MYR",
@@ -100,6 +101,6 @@ def test_ops_top_risk_pairs_endpoint_shape(monkeypatch) -> None:
     response = client.get("/ops/top-risk-pairs?limit=2")
     assert response.status_code == 200
     body = response.json()
-    assert set(body.keys()) == {"scan_date", "pair_count", "rankings"}
+    assert set(body.keys()) == {"scan_date", "pair_count", "latest_update_utc", "rankings"}
     assert isinstance(body["rankings"], list)
     assert body["pair_count"] == 2
