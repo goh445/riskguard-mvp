@@ -18,7 +18,7 @@ from forex_market_data import ForexMarketDataClient
 from forex_graph_engine import ForexGraphRiskEngine
 from forex_pair_scanner import ForexPairScanner
 from news_intelligence import GlobalNewsIntelligence
-from models import ForexRiskRequest, ForexRiskResponse, RiskResponse, TransactionRequest
+from models import ForexRiskRequest, ForexRiskResponse, NewsSourceUpsertRequest, RiskResponse, TransactionRequest
 from risk_engine import RiskEngine
 from service_controls import SlidingWindowRateLimiter, is_api_key_valid
 
@@ -77,6 +77,10 @@ rate_limiter = SlidingWindowRateLimiter(
     window_seconds=settings.rate_limit_window_seconds,
 )
 audit_store = AuditStore(settings.audit_db_path)
+audit_store.seed_news_sources(GlobalNewsIntelligence.DEFAULT_FEEDS)
+news_intelligence.set_feed_sources(
+    [item["url"] for item in audit_store.list_news_sources(enabled_only=True)]
+)
 forex_pair_scanner = ForexPairScanner(
     audit_store=audit_store,
     market_data=forex_market_data,
@@ -146,6 +150,54 @@ def top_risk_pairs(
 ) -> dict[str, object]:
     """Return today's highest-risk major FX pairs with automatic daily scan."""
     return forex_pair_scanner.top_risk_pairs(limit=limit, force_refresh=force_refresh)
+
+
+@app.get("/ops/news-sources")
+def list_news_sources(
+    enabled_only: bool = False,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
+    """List dynamic news source whitelist entries."""
+    sources = audit_store.list_news_sources(enabled_only=enabled_only)
+    return {
+        "count": len(sources),
+        "sources": sources,
+        "active_sources": news_intelligence.get_feed_sources(),
+    }
+
+
+@app.post("/ops/news-sources")
+def upsert_news_source(
+    payload: NewsSourceUpsertRequest,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, object]:
+    """Create or update one news source whitelist entry."""
+    audit_store.upsert_news_source(url=payload.url, enabled=payload.enabled)
+    active = [item["url"] for item in audit_store.list_news_sources(enabled_only=True)]
+    news_intelligence.set_feed_sources(active)
+    return {
+        "updated": True,
+        "active_source_count": len(active),
+        "active_sources": active,
+    }
+
+
+@app.delete("/ops/news-sources")
+def delete_news_source(
+    url: str,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, object]:
+    """Delete one source from whitelist and refresh active feed list."""
+    deleted = audit_store.delete_news_source(url=url.strip())
+    active = [item["url"] for item in audit_store.list_news_sources(enabled_only=True)]
+    news_intelligence.set_feed_sources(active)
+    return {
+        "deleted": deleted,
+        "active_source_count": len(active),
+        "active_sources": active,
+    }
 
 
 @app.post("/analyze-forex-risk", response_model=ForexRiskResponse)

@@ -85,6 +85,9 @@ Additional operational endpoint:
 
 - `GET /ops/summary`
 - `GET /ops/top-risk-pairs?limit=10&force_refresh=false`
+- `GET /ops/news-sources?enabled_only=false`
+- `POST /ops/news-sources`
+- `DELETE /ops/news-sources?url=<feed_url>`
 
 ### Forex network risk request example
 
@@ -185,10 +188,34 @@ Where to set keys:
 - Streamlit Cloud frontend (if needed): App settings → Secrets
 - Local dev: create `.env` from `.env.example` and keep it untracked
 
+About `RISKGUARD_API_KEY` and `BACKEND_API_KEY`:
+
+- `RISKGUARD_API_KEY`: backend API protection key (set on Render env vars)
+- `BACKEND_API_KEY`: frontend key used to call backend (set on Streamlit secrets or local `.env`)
+- If not set, backend currently allows unauthenticated calls (development mode)
+
 Will app still work if key is not pushed?
 
 - Yes. Deployed services read keys from platform environment variables/secrets, not from Git commits.
 - This is the correct and secure production pattern.
+
+## Dynamic News Source Whitelist (Runtime)
+
+You can add/remove feed URLs without redeploying backend.
+
+Add or update one source:
+
+```bash
+curl -X POST http://127.0.0.1:8000/ops/news-sources \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/rss.xml","enabled":true}'
+```
+
+Delete one source:
+
+```bash
+curl -X DELETE "http://127.0.0.1:8000/ops/news-sources?url=https://example.com/rss.xml"
+```
 
 Observability headers returned on every API response:
 

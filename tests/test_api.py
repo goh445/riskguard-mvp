@@ -104,3 +104,53 @@ def test_ops_top_risk_pairs_endpoint_shape(monkeypatch) -> None:
     assert set(body.keys()) == {"scan_date", "pair_count", "latest_update_utc", "rankings"}
     assert isinstance(body["rankings"], list)
     assert body["pair_count"] == 2
+
+
+def test_news_sources_crud_endpoints(monkeypatch) -> None:
+    client = TestClient(app)
+
+    class StubAuditStore:
+        sources = [{"url": "https://feeds.example.com/a", "enabled": True, "created_at": "x", "updated_at": "x"}]
+
+        @classmethod
+        def list_news_sources(cls, enabled_only: bool = False):
+            if enabled_only:
+                return [row for row in cls.sources if row["enabled"]]
+            return list(cls.sources)
+
+        @classmethod
+        def upsert_news_source(cls, url: str, enabled: bool):
+            cls.sources = [row for row in cls.sources if row["url"] != url]
+            cls.sources.append({"url": url, "enabled": enabled, "created_at": "x", "updated_at": "x"})
+
+        @classmethod
+        def delete_news_source(cls, url: str):
+            before = len(cls.sources)
+            cls.sources = [row for row in cls.sources if row["url"] != url]
+            return before - len(cls.sources)
+
+    class StubNewsIntelligence:
+        active = ["https://feeds.example.com/a"]
+
+        @classmethod
+        def get_feed_sources(cls):
+            return list(cls.active)
+
+        @classmethod
+        def set_feed_sources(cls, sources):
+            cls.active = list(sources)
+
+    monkeypatch.setattr("main.audit_store", StubAuditStore)
+    monkeypatch.setattr("main.news_intelligence", StubNewsIntelligence)
+
+    listed = client.get("/ops/news-sources")
+    assert listed.status_code == 200
+    assert "sources" in listed.json()
+
+    upserted = client.post("/ops/news-sources", json={"url": "https://feeds.example.com/b", "enabled": True})
+    assert upserted.status_code == 200
+    assert upserted.json()["updated"] is True
+
+    deleted = client.request("DELETE", "/ops/news-sources", params={"url": "https://feeds.example.com/b"})
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] in {0, 1}

@@ -57,6 +57,17 @@ class AuditStore:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS news_source_whitelist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT NOT NULL UNIQUE,
+                    enabled INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
             connection.commit()
 
     def log_decision(
@@ -211,3 +222,77 @@ class AuditStore:
                 }
             )
         return results
+
+    def seed_news_sources(self, urls: list[str]) -> None:
+        """Seed whitelist with defaults when table is empty."""
+        now = datetime.now(timezone.utc).isoformat()
+        cleaned = [url.strip() for url in urls if url and url.strip()]
+        if not cleaned:
+            return
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM news_source_whitelist")
+            existing_count = int(cursor.fetchone()[0] or 0)
+            if existing_count > 0:
+                return
+
+            for url in cleaned:
+                cursor.execute(
+                    """
+                    INSERT INTO news_source_whitelist (url, enabled, created_at, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (url, 1, now, now),
+                )
+            connection.commit()
+
+    def list_news_sources(self, enabled_only: bool = False) -> list[dict[str, Any]]:
+        """List configured news source URLs."""
+        query = "SELECT url, enabled, created_at, updated_at FROM news_source_whitelist"
+        args: tuple[object, ...] = ()
+        if enabled_only:
+            query += " WHERE enabled = 1"
+        query += " ORDER BY url ASC"
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(query, args)
+            rows = cursor.fetchall()
+
+        return [
+            {
+                "url": row[0],
+                "enabled": bool(row[1]),
+                "created_at": row[2],
+                "updated_at": row[3],
+            }
+            for row in rows
+        ]
+
+    def upsert_news_source(self, url: str, enabled: bool) -> None:
+        """Create or update one news source whitelist entry."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO news_source_whitelist (url, enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(url)
+                DO UPDATE SET
+                    enabled = excluded.enabled,
+                    updated_at = excluded.updated_at
+                """,
+                (url, 1 if enabled else 0, now, now),
+            )
+            connection.commit()
+
+    def delete_news_source(self, url: str) -> int:
+        """Delete one source URL from whitelist and return number of deleted rows."""
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute("DELETE FROM news_source_whitelist WHERE url = ?", (url,))
+            deleted = cursor.rowcount
+            connection.commit()
+        return int(deleted or 0)

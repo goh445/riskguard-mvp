@@ -15,7 +15,7 @@ import requests
 class GlobalNewsIntelligence:
     """Fetch public news feeds and derive risk signals for autonomous scoring."""
 
-    FEEDS = [
+    DEFAULT_FEEDS = [
         "https://feeds.reuters.com/reuters/worldNews",
         "https://feeds.bbci.co.uk/news/world/rss.xml",
     ]
@@ -63,9 +63,25 @@ class GlobalNewsIntelligence:
         self.use_gemini_news = use_gemini_news
         self.gemini_api_key = gemini_api_key
         self.gemini_model = gemini_model
+        self.feed_sources = list(self.DEFAULT_FEEDS)
         self._lock = Lock()
         self._cached_at_epoch = 0.0
         self._cached_signals: dict[str, Any] | None = None
+
+    def set_feed_sources(self, sources: list[str]) -> None:
+        """Dynamically update whitelist feed sources without restart."""
+        cleaned = [source.strip() for source in sources if source and source.strip()]
+        if not cleaned:
+            cleaned = list(self.DEFAULT_FEEDS)
+        with self._lock:
+            self.feed_sources = cleaned
+            self._cached_signals = None
+            self._cached_at_epoch = 0.0
+
+    def get_feed_sources(self) -> list[str]:
+        """Return current active feed sources."""
+        with self._lock:
+            return list(self.feed_sources)
 
     def derive_signals(self) -> dict[str, Any]:
         """Return cached or freshly derived global news risk signals."""
@@ -153,7 +169,7 @@ class GlobalNewsIntelligence:
 
     def _fetch_headlines(self, limit: int = 50) -> list[str]:
         headlines: list[str] = []
-        for feed in self.FEEDS:
+        for feed in self.get_feed_sources():
             try:
                 response = requests.get(feed, timeout=self.timeout_seconds)
                 response.raise_for_status()

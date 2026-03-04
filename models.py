@@ -82,3 +82,18 @@ class ForexRiskResponse(BaseModel):
     reasons: list[str]
     hidden_links: list[str]
     debug: dict[str, Any] | None = None
+
+
+class NewsSourceUpsertRequest(BaseModel):
+    """Input payload for updating dynamic news source whitelist."""
+
+    url: str = Field(..., min_length=8)
+    enabled: bool = True
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not (normalized.startswith("http://") or normalized.startswith("https://")):
+            raise ValueError("url must start with http:// or https://")
+        return normalized
