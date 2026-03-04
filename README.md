@@ -176,7 +176,7 @@ Set these environment variables on Render:
 - `NEWS_CACHE_TTL_SECONDS` = cache TTL seconds (default `600`)
 - `USE_GEMINI_NEWS` = `true|false` (default `false`)
 - `GEMINI_API_KEY` = your Gemini API key
-- `GEMINI_MODEL` = model name (default `gemini-1.5-flash`)
+- `GEMINI_MODEL` = model name (default `gemini-2.5-flash`)
 
 ## Gemini API Key Placement (Important)
 
@@ -198,6 +198,17 @@ Gemini usage in current system:
 
 - `USE_GEMINI_NEWS=true` and valid `GEMINI_API_KEY` => backend uses Gemini to refine news-derived parameters.
 - `USE_GEMINI_NEWS=false` or missing key => system falls back to deterministic RSS intelligence only.
+
+Current AI status fields (returned in `debug` from `/analyze-forex-risk`):
+
+- `auto_parameter_tuning`
+- `gemini_enabled`
+- `news_source`
+- `news_sample_size`
+- `active_feed_count`
+- `successful_feed_count`
+
+Default RSS coverage includes Reuters, BBC, CNBC, Sky News, Al Jazeera, and FT.
 
 Will app still work if key is not pushed?
 
@@ -221,6 +232,15 @@ Delete one source:
 ```bash
 curl -X DELETE "http://127.0.0.1:8000/ops/news-sources?url=https://example.com/rss.xml"
 ```
+
+## Timeline Display Notes
+
+`Forex Risk History` now uses true datetime axis and shows milliseconds.
+
+- 1 data point: chart shows a single scatter point (no line yet)
+- 2+ data points: chart switches to line + markers trend view
+
+This avoids the previous visual issue where same-second values looked like a flat/empty timeline.
 
 Observability headers returned on every API response:
 

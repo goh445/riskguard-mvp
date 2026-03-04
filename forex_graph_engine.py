@@ -217,6 +217,12 @@ class ForexGraphRiskEngine:
             "market_data_source": metadata.get("market_data_source", "manual_or_unknown"),
             "market_data_fetched_at_utc": metadata.get("market_data_fetched_at_utc"),
             "market_last_timestamp": metadata.get("market_last_timestamp"),
+            "news_source": metadata.get("news_source", "unknown"),
+            "news_sample_size": metadata.get("news_sample_size", 0),
+            "active_feed_count": metadata.get("active_feed_count", 0),
+            "successful_feed_count": metadata.get("successful_feed_count", 0),
+            "gemini_enabled": metadata.get("gemini_enabled", False),
+            "auto_parameter_tuning": metadata.get("auto_parameter_tuning", False),
             "raw_score": round(score, 2),
         }
 

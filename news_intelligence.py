@@ -18,6 +18,10 @@ class GlobalNewsIntelligence:
     DEFAULT_FEEDS = [
         "https://feeds.reuters.com/reuters/worldNews",
         "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+        "https://feeds.skynews.com/feeds/rss/world.xml",
+        "https://www.aljazeera.com/xml/rss/all.xml",
+        "https://www.ft.com/rss/world",
     ]
 
     POSITIVE_TERMS = {
@@ -93,9 +97,14 @@ class GlobalNewsIntelligence:
             ):
                 return self._cached_signals
 
-        headlines = self._fetch_headlines(limit=50)
-        signals = self._signals_from_headlines(headlines)
+        headlines, successful_feed_count, active_feed_count = self._fetch_headlines(limit=80)
+        signals = self._signals_from_headlines(
+            headlines=headlines,
+            successful_feed_count=successful_feed_count,
+            active_feed_count=active_feed_count,
+        )
         signals = self._maybe_enhance_with_gemini(signals, headlines)
+        signals["gemini_enabled"] = bool(self.use_gemini_news and self.gemini_api_key)
         with self._lock:
             self._cached_signals = signals
             self._cached_at_epoch = now_epoch
@@ -167,27 +176,43 @@ class GlobalNewsIntelligence:
             return None
         return match.group(0)
 
-    def _fetch_headlines(self, limit: int = 50) -> list[str]:
+    def _fetch_headlines(self, limit: int = 50) -> tuple[list[str], int, int]:
         headlines: list[str] = []
-        for feed in self.get_feed_sources():
+        seen: set[str] = set()
+        sources = self.get_feed_sources()
+        successful_feeds = 0
+        for feed in sources:
             try:
                 response = requests.get(feed, timeout=self.timeout_seconds)
                 response.raise_for_status()
                 xml_root = ElementTree.fromstring(response.text)
-                for item in xml_root.findall(".//item/title"):
-                    if item.text:
-                        headlines.append(item.text.strip())
-                        if len(headlines) >= limit:
-                            return headlines
+                successful_feeds += 1
+
+                rss_titles = [item.text.strip() for item in xml_root.findall(".//item/title") if item.text]
+                atom_titles = [entry.text.strip() for entry in xml_root.findall(".//entry/title") if entry.text]
+
+                for title in rss_titles + atom_titles:
+                    normalized = title.lower()
+                    if normalized in seen:
+                        continue
+                    seen.add(normalized)
+                    headlines.append(title)
+                    if len(headlines) >= limit:
+                        return headlines, successful_feeds, len(sources)
             except (requests.RequestException, ElementTree.ParseError):
                 continue
-        return headlines
+        return headlines, successful_feeds, len(sources)
 
     @staticmethod
     def _count_matches(text: str, terms: set[str]) -> int:
         return sum(1 for term in terms if term in text)
 
-    def _signals_from_headlines(self, headlines: list[str]) -> dict[str, Any]:
+    def _signals_from_headlines(
+        self,
+        headlines: list[str],
+        successful_feed_count: int,
+        active_feed_count: int,
+    ) -> dict[str, Any]:
         if not headlines:
             return {
                 "news_sentiment": -0.05,
@@ -200,6 +225,8 @@ class GlobalNewsIntelligence:
                 "fraud_pressure_index": 0.35,
                 "news_sample_size": 0,
                 "news_source": "fallback:no_feed",
+                "active_feed_count": active_feed_count,
+                "successful_feed_count": successful_feed_count,
                 "news_updated_at_utc": datetime.now(timezone.utc).isoformat(),
             }
 
@@ -230,6 +257,8 @@ class GlobalNewsIntelligence:
             "systemic_contagion": round(float(min(1.0, (geo_count + policy_count) / 16)), 3),
             "fraud_pressure_index": round(float(min(1.0, (neg_count + liquidity_count) / 20)), 3),
             "news_sample_size": len(headlines),
-            "news_source": "rss:reuters_bbc",
+            "news_source": f"rss:{successful_feed_count}/{active_feed_count}",
+            "active_feed_count": active_feed_count,
+            "successful_feed_count": successful_feed_count,
             "news_updated_at_utc": datetime.now(timezone.utc).isoformat(),
         }

@@ -173,6 +173,21 @@ if submitted:
         st.markdown("### Hidden Links")
         st.write(result.get("hidden_links", []))
         debug_payload = result.get("debug", {})
+        st.markdown("### AI Auto-Tuning Status")
+        ai_col_1, ai_col_2, ai_col_3 = st.columns(3)
+        ai_col_1.metric("Auto Parameter Tuning", "ON" if debug_payload.get("auto_parameter_tuning") else "OFF")
+        ai_col_2.metric(
+            "Gemini News Enhance",
+            "ON" if debug_payload.get("gemini_enabled") else "OFF",
+        )
+        ai_col_3.metric(
+            "News Feeds",
+            f"{debug_payload.get('successful_feed_count', 0)}/{debug_payload.get('active_feed_count', 0)}",
+        )
+        st.caption(
+            f"News source: {debug_payload.get('news_source', 'unknown')} | "
+            f"Headlines used: {debug_payload.get('news_sample_size', 0)}"
+        )
         market_source = debug_payload.get("market_data_source", "unknown")
         market_ts = debug_payload.get("market_last_timestamp")
         fetched_ts = debug_payload.get("market_data_fetched_at_utc")
@@ -182,15 +197,21 @@ if submitted:
         with st.expander("Debug"):
             st.json(debug_payload)
 
+        event_time = datetime.now(ZoneInfo("Asia/Kuala_Lumpur"))
         st.session_state.forex_history.append(
             {
-                "time": datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
+                "analyzed_at": event_time,
+                "time": event_time.isoformat(timespec="milliseconds"),
                 "pair": f"{base_currency.upper()}/{quote_currency.upper()}",
                 "score": result["score"],
                 "status": result["status"],
                 "flags": ", ".join(result.get("flags", [])),
                 "hidden_links": " | ".join(result.get("hidden_links", [])),
                 "market_source": debug_payload.get("market_data_source"),
+                "news_source": debug_payload.get("news_source"),
+                "headlines": debug_payload.get("news_sample_size", 0),
+                "auto_tuning": bool(debug_payload.get("auto_parameter_tuning")),
+                "gemini": bool(debug_payload.get("gemini_enabled")),
             }
         )
     except requests.RequestException as exc:
@@ -201,18 +222,43 @@ if submitted:
 
 st.markdown("## Forex Risk History")
 if st.session_state.forex_history:
-    chart_data = st.session_state.forex_history
-    fig = px.line(
-        chart_data,
-        x="time",
-        y="score",
-        color="pair",
-        title="Forex & Commodity & Crypto Risk Score Timeline",
-        hover_data=["status", "flags", "hidden_links", "market_source"],
+    chart_data = sorted(st.session_state.forex_history, key=lambda row: row["analyzed_at"])
+    point_count = len(chart_data)
+    chart_common_args = {
+        "data_frame": chart_data,
+        "x": "analyzed_at",
+        "y": "score",
+        "color": "pair",
+        "title": "Forex & Commodity & Crypto Risk Score Timeline",
+        "hover_data": [
+            "time",
+            "status",
+            "flags",
+            "hidden_links",
+            "market_source",
+            "news_source",
+            "headlines",
+            "auto_tuning",
+            "gemini",
+        ],
+    }
+    if point_count < 2:
+        fig = px.scatter(**chart_common_args)
+        fig.update_traces(marker=dict(size=10))
+    else:
+        fig = px.line(**chart_common_args, markers=True)
+        fig.update_traces(line=dict(width=3), marker=dict(size=9))
+    fig.update_layout(
+        height=460,
+        yaxis=dict(range=[0, 100], title="Risk Score"),
+        xaxis=dict(title="Analysis Time (Asia/Kuala_Lumpur)", tickformat="%Y-%m-%d %H:%M:%S"),
+        hovermode="x unified",
     )
     st.plotly_chart(fig, width="stretch")
+    if point_count < 2:
+        st.caption("Timeline currently has 1 data point; submit more analyses to see a trend line.")
     st.markdown("### Timeline Details")
-    st.dataframe(st.session_state.forex_history)
+    st.dataframe(chart_data)
 else:
     st.info("No forex risk events yet. Submit analysis above to build timeline.")
 
