@@ -7,44 +7,22 @@ import os
 import time
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
 
-from data.generate_mock_data import save_mock_transactions
 
-
-API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-transaction")
+API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-forex-risk")
 API_KEY = os.getenv("BACKEND_API_KEY", "")
-DATA_FILE = "data/mock_transactions.csv"
-
-
-@st.cache_data(show_spinner=False)
-def load_trends_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load and aggregate trends by day and hour."""
-    if not pd.io.common.file_exists(DATA_FILE):
-        save_mock_transactions(DATA_FILE)
-    df = pd.read_csv(DATA_FILE)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    day_df = (
-        df.assign(day=df["timestamp"].dt.date)
-        .groupby("day", as_index=False)
-        .size()
-        .rename(columns={"size": "transactions"})
-    )
-    hour_df = (
-        df.assign(hour=df["timestamp"].dt.hour)
-        .groupby("hour", as_index=False)
-        .size()
-        .rename(columns={"size": "transactions"})
-    )
-    return day_df, hour_df
 
 
 def check_backend_health(base_analyze_url: str, api_key: str) -> tuple[bool, str]:
     """Check backend health endpoint based on analyze URL."""
-    health_url = base_analyze_url.replace("/analyze-transaction", "/health")
+    health_url = base_analyze_url
+    for suffix in ["/analyze-forex-risk", "/analyze-transaction"]:
+        if health_url.endswith(suffix):
+            health_url = health_url[: -len(suffix)] + "/health"
+            break
     headers = {"X-API-Key": api_key} if api_key else None
     try:
         response = requests.get(health_url, timeout=3, headers=headers)
@@ -74,7 +52,10 @@ def call_analyze_api(api_url: str, payload: dict[str, object], api_key: str) -> 
 
 
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
-st.title("RiskGuard MVP — Fraud Detection & Risk Scoring")
+st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
+
+if "forex_history" not in st.session_state:
+    st.session_state.forex_history = []
 
 with st.sidebar:
     st.header("API Settings")
@@ -86,31 +67,34 @@ with st.sidebar:
     else:
         st.warning(f"Backend unreachable: {health_url}")
 
-st.subheader("Analyze Transaction")
-with st.form("analyze_form"):
+st.subheader("Analyze Forex Market Risk")
+with st.form("analyze_forex_form"):
     col1, col2 = st.columns(2)
     with col1:
-        user_id = st.text_input("User ID", value="user_001")
-        amount = st.number_input("Amount", min_value=0.01, value=120.0, step=1.0)
+        base_currency = st.text_input("Base Currency", value="USD")
+        quote_currency = st.text_input("Quote Currency", value="MYR")
     with col2:
-        city = st.text_input("City", value="Kuala Lumpur")
+        macro_stress = st.slider("Macro Stress (0-1)", min_value=0.0, max_value=1.0, value=0.4, step=0.05)
+        news_sentiment = st.slider("News Sentiment (-1 to 1)", min_value=-1.0, max_value=1.0, value=0.0, step=0.05)
         timestamp = st.text_input(
             "Timestamp (ISO8601, Malaysia TZ)",
             value=datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
         )
 
-    submitted = st.form_submit_button("Analyze")
+    submitted = st.form_submit_button("Analyze Forex Risk")
 
 if submitted:
     payload = {
-        "user_id": user_id,
-        "amount": float(amount),
-        "city": city,
+        "base_currency": base_currency,
+        "quote_currency": quote_currency,
         "timestamp": timestamp,
-        "metadata": {},
+        "metadata": {
+            "macro_stress": macro_stress,
+            "news_sentiment": news_sentiment,
+        },
     }
     try:
-        with st.spinner("Analyzing transaction... (first request may be slower due to backend cold start)"):
+        with st.spinner("Analyzing forex market risk... (first request may be slower due to backend cold start)"):
             result = call_analyze_api(api_url=api_url, payload=payload, api_key=api_key)
 
         st.metric(label="Risk Score", value=f"{result['score']} ({result['status']})")
@@ -124,22 +108,29 @@ if submitted:
 
         st.markdown("### Flags")
         st.write(result.get("flags", []))
+        st.markdown("### Hidden Links")
+        st.write(result.get("hidden_links", []))
         with st.expander("Debug"):
             st.json(result.get("debug", {}))
+
+        st.session_state.forex_history.append(
+            {
+                "time": datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
+                "pair": f"{base_currency.upper()}/{quote_currency.upper()}",
+                "score": result["score"],
+                "status": result["status"],
+            }
+        )
     except requests.RequestException as exc:
         st.error(
             "Failed to call API after retries. If using Render free plan, wait 30-60 seconds for cold start and try again. "
             f"Details: {exc}"
         )
 
-st.markdown("## Risk Trends")
-day_data, hour_data = load_trends_data()
-
-col_day, col_hour = st.columns(2)
-with col_day:
-    fig_day = px.line(day_data, x="day", y="transactions", title="Transactions by Day")
-    st.plotly_chart(fig_day, width="stretch")
-
-with col_hour:
-    fig_hour = px.bar(hour_data, x="hour", y="transactions", title="Transactions by Hour")
-    st.plotly_chart(fig_hour, width="stretch")
+st.markdown("## Forex Risk History")
+if st.session_state.forex_history:
+    chart_data = st.session_state.forex_history
+    fig = px.line(chart_data, x="time", y="score", color="pair", title="Forex Pair Risk Score Timeline")
+    st.plotly_chart(fig, width="stretch")
+else:
+    st.info("No forex risk events yet. Submit analysis above to build timeline.")

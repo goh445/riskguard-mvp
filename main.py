@@ -14,6 +14,7 @@ from audit_store import AuditStore
 from config import settings
 from data.generate_mock_data import save_mock_transactions
 from data_utils import DATA_FILE, load_transactions
+from forex_market_data import ForexMarketDataClient
 from forex_graph_engine import ForexGraphRiskEngine
 from models import ForexRiskRequest, ForexRiskResponse, RiskResponse, TransactionRequest
 from risk_engine import RiskEngine
@@ -61,6 +62,7 @@ def _build_engine() -> RiskEngine:
 
 engine = _build_engine()
 forex_graph_engine = ForexGraphRiskEngine()
+forex_market_data = ForexMarketDataClient()
 rate_limiter = SlidingWindowRateLimiter(
     max_requests=settings.rate_limit_requests,
     window_seconds=settings.rate_limit_window_seconds,
@@ -127,4 +129,30 @@ def analyze_forex_risk(
     _limit: None = Depends(enforce_rate_limit),
 ) -> ForexRiskResponse:
     """Analyze forex market risk using network contagion and hidden-link logic."""
-    return forex_graph_engine.analyze(payload)
+    metrics = forex_market_data.fetch_snapshot(payload.base_currency, payload.quote_currency)
+    enriched_payload = payload.model_copy(
+        update={
+            "observed_volatility": payload.observed_volatility
+            if payload.observed_volatility is not None
+            else metrics["observed_volatility"],
+            "spread_bps": payload.spread_bps if payload.spread_bps is not None else metrics["spread_bps"],
+            "metadata": {
+                **(payload.metadata or {}),
+                "market_data_source": metrics["source"],
+                "market_data_sample_size": metrics["sample_size"],
+                "market_last_rate": metrics["last_rate"],
+            },
+        }
+    )
+    return forex_graph_engine.analyze(enriched_payload)
+
+
+@app.get("/forex/market-snapshot")
+def forex_market_snapshot(
+    base_currency: str,
+    quote_currency: str,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, float | int | str | None]:
+    """Get free-market derived risk features for a currency pair."""
+    return forex_market_data.fetch_snapshot(base_currency.upper(), quote_currency.upper())

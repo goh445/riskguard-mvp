@@ -52,8 +52,8 @@ class ForexRiskRequest(BaseModel):
 
     base_currency: str = Field(..., min_length=3, max_length=3)
     quote_currency: str = Field(..., min_length=3, max_length=3)
-    observed_volatility: float = Field(..., ge=0)
-    spread_bps: float = Field(..., ge=0)
+    observed_volatility: float | None = Field(default=None, ge=0)
+    spread_bps: float | None = Field(default=None, ge=0)
     timestamp: datetime
     metadata: dict[str, Any] | None = None
 

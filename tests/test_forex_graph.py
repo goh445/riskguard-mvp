@@ -70,3 +70,34 @@ def test_analyze_forex_risk_requires_timezone(monkeypatch) -> None:
 
     response = client.post("/analyze-forex-risk", json=payload)
     assert response.status_code == 422
+
+
+def test_analyze_forex_risk_auto_market_enrichment(monkeypatch) -> None:
+    client = _reload_client(monkeypatch)
+
+    class StubMarketData:
+        @staticmethod
+        def fetch_snapshot(base: str, quote: str) -> dict[str, object]:
+            return {
+                "observed_volatility": 0.02,
+                "spread_bps": 25.0,
+                "sample_size": 30,
+                "last_rate": 4.47,
+                "source": "stub",
+            }
+
+    monkeypatch.setattr(main, "forex_market_data", StubMarketData())
+
+    payload = {
+        "base_currency": "USD",
+        "quote_currency": "MYR",
+        "timestamp": "2026-03-01T12:34:56+08:00",
+        "metadata": {"news_sentiment": -0.3, "macro_stress": 0.7},
+    }
+
+    response = client.post("/analyze-forex-risk", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["debug"]["observed_volatility"] == 0.02
+    assert body["debug"]["spread_bps"] == 25.0
+

@@ -61,16 +61,18 @@ class ForexGraphRiskEngine:
         flags: list[str] = []
         reasons: list[str] = []
         hidden_links: list[str] = []
+        observed_volatility = request.observed_volatility if request.observed_volatility is not None else 0.009
+        spread_bps = request.spread_bps if request.spread_bps is not None else 8.0
 
         if request.base_currency not in self.graph or request.quote_currency not in self.graph:
             flags.append("coverage_gap")
             reasons.append("Currency pair outside current graph coverage; risk inferred with conservative fallback")
 
-        if request.observed_volatility >= 0.015:
+        if observed_volatility >= 0.015:
             flags.append("volatility_spike")
             reasons.append("Observed volatility is elevated versus normal FX ranges")
 
-        if request.spread_bps >= 20:
+        if spread_bps >= 20:
             flags.append("liquidity_stress")
             reasons.append("Bid-ask spread indicates potential liquidity stress")
 
@@ -102,8 +104,8 @@ class ForexGraphRiskEngine:
             reasons.append("Macro/news signals suggest elevated directional stress")
 
         score = 0.0
-        score += min(request.observed_volatility * 2200, 35)
-        score += min(request.spread_bps * 0.8, 20)
+        score += min(observed_volatility * 2200, 35)
+        score += min(spread_bps * 0.8, 20)
         score += min(path_risk * 45, 20)
         score += min((base_centrality + quote_centrality) * 20, 15)
         score += max(0.0, min((-sentiment * 20) + (macro_stress * 10), 15))
@@ -116,6 +118,8 @@ class ForexGraphRiskEngine:
             "path_risk": round(path_risk, 3),
             "sentiment": sentiment,
             "macro_stress": macro_stress,
+            "observed_volatility": round(observed_volatility, 6),
+            "spread_bps": round(spread_bps, 2),
             "raw_score": round(score, 2),
         }
 
