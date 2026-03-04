@@ -16,9 +16,17 @@ API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-forex-risk
 API_KEY = os.getenv("BACKEND_API_KEY", "")
 
 
+def normalize_analyze_url(api_url: str) -> str:
+    """Normalize analyze endpoint to forex-focused route."""
+    cleaned = api_url.strip()
+    if cleaned.endswith("/analyze-transaction"):
+        return cleaned[: -len("/analyze-transaction")] + "/analyze-forex-risk"
+    return cleaned
+
+
 def check_backend_health(base_analyze_url: str, api_key: str) -> tuple[bool, str]:
     """Check backend health endpoint based on analyze URL."""
-    health_url = base_analyze_url
+    health_url = normalize_analyze_url(base_analyze_url)
     for suffix in ["/analyze-forex-risk", "/analyze-transaction"]:
         if health_url.endswith(suffix):
             health_url = health_url[: -len(suffix)] + "/health"
@@ -36,10 +44,14 @@ def check_backend_health(base_analyze_url: str, api_key: str) -> tuple[bool, str
 def call_analyze_api(api_url: str, payload: dict[str, object], api_key: str) -> dict[str, object]:
     """Call backend analyze API with retries to handle cold starts."""
     last_exception: Exception | None = None
+    normalized_url = normalize_analyze_url(api_url)
     headers = {"X-API-Key": api_key} if api_key else None
     for attempt in range(1, 4):
         try:
-            response = requests.post(api_url, json=payload, timeout=(8, 45), headers=headers)
+            response = requests.post(normalized_url, json=payload, timeout=(8, 45), headers=headers)
+            if response.status_code in {405, 422} and normalized_url.endswith("/analyze-transaction"):
+                fallback_url = normalized_url[: -len("/analyze-transaction")] + "/analyze-forex-risk"
+                response = requests.post(fallback_url, json=payload, timeout=(8, 45), headers=headers)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as exc:
@@ -60,8 +72,11 @@ if "forex_history" not in st.session_state:
 with st.sidebar:
     st.header("API Settings")
     api_url = st.text_input("Analyze endpoint", value=API_URL)
+    normalized_api_url = normalize_analyze_url(api_url)
+    if normalized_api_url != api_url.strip():
+        st.info(f"Legacy endpoint detected; auto-using: {normalized_api_url}")
     api_key = st.text_input("API Key (optional)", value=API_KEY, type="password")
-    is_healthy, health_url = check_backend_health(api_url, api_key)
+    is_healthy, health_url = check_backend_health(normalized_api_url, api_key)
     if is_healthy:
         st.success(f"Backend OK: {health_url}")
     else:
@@ -95,7 +110,7 @@ if submitted:
     }
     try:
         with st.spinner("Analyzing forex market risk... (first request may be slower due to backend cold start)"):
-            result = call_analyze_api(api_url=api_url, payload=payload, api_key=api_key)
+            result = call_analyze_api(api_url=normalized_api_url, payload=payload, api_key=api_key)
 
         st.metric(label="Risk Score", value=f"{result['score']} ({result['status']})")
 
