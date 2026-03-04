@@ -5,14 +5,48 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 
 def _first_non_empty_env(*names: str) -> str:
     """Return first non-empty environment variable value."""
     for name in names:
-        value = os.getenv(name, "").strip()
+        value = _clean_env_value(os.getenv(name, ""))
         if value:
             return value
     return ""
+
+
+def _clean_env_value(value: str | None) -> str:
+    """Normalize env string and ignore common placeholder tokens."""
+    if value is None:
+        return ""
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+
+    lowered = cleaned.lower()
+    placeholder_prefixes = (
+        "replace_with",
+        "your_",
+        "<",
+    )
+    placeholder_exact = {
+        "changeme",
+        "none",
+        "null",
+        "todo",
+    }
+    if lowered in placeholder_exact:
+        return ""
+    if any(lowered.startswith(prefix) for prefix in placeholder_prefixes):
+        return ""
+    return cleaned
 
 
 @dataclass(frozen=True)
@@ -26,7 +60,7 @@ class Settings:
     risk_cap: int = int(os.getenv("RISK_CAP", "100"))
     use_ml_anomaly: bool = os.getenv("USE_ML_ANOMALY", "false").lower() == "true"
     random_seed: int = int(os.getenv("RANDOM_SEED", "42"))
-    api_key: str = os.getenv("RISKGUARD_API_KEY", "")
+    api_key: str = _clean_env_value(os.getenv("RISKGUARD_API_KEY", ""))
     rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
     rate_limit_window_seconds: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
     audit_db_path: str = os.getenv("AUDIT_DB_PATH", "data/riskguard_audit.db")
