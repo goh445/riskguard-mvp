@@ -225,6 +225,8 @@ class ForexGraphRiskEngine:
             "dynamic_feed_count": metadata.get("dynamic_feed_count", 0),
             "ai_news_engine": metadata.get("ai_news_engine", True),
             "gemini_enabled": metadata.get("gemini_enabled", False),
+            "gemini_status": metadata.get("gemini_status", "unknown"),
+            "gemini_reason": metadata.get("gemini_reason", "unknown"),
             "auto_parameter_tuning": metadata.get("auto_parameter_tuning", False),
             "raw_score": round(score, 2),
         }

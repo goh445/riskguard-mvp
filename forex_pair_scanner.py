@@ -26,8 +26,14 @@ class ForexPairScanner:
         ("USD", "CNY"),
         ("USD", "SGD"),
         ("USD", "MYR"),
+        ("USD", "HKD"),
         ("EUR", "GBP"),
         ("EUR", "CHF"),
+        ("EUR", "JPY"),
+        ("EUR", "AUD"),
+        ("EUR", "CAD"),
+        ("EUR", "SEK"),
+        ("EUR", "NOK"),
         ("USD", "SEK"),
         ("USD", "NOK"),
         ("USD", "INR"),
@@ -35,6 +41,23 @@ class ForexPairScanner:
         ("USD", "BRL"),
         ("USD", "MXN"),
         ("USD", "ZAR"),
+        ("USD", "TRY"),
+        ("USD", "THB"),
+        ("USD", "IDR"),
+        ("USD", "PHP"),
+        ("USD", "VND"),
+        ("USD", "PLN"),
+        ("USD", "HUF"),
+        ("USD", "CZK"),
+        ("USD", "AED"),
+        ("USD", "SAR"),
+        ("USD", "QAR"),
+        ("USD", "ILS"),
+        ("USD", "DKK"),
+        ("USD", "TWD"),
+        ("USD", "ARS"),
+        ("USD", "CLP"),
+        ("USD", "COP"),
         ("XAU", "USD"),
         ("XAG", "USD"),
         ("XPT", "USD"),
@@ -46,6 +69,11 @@ class ForexPairScanner:
         ("BNB", "USD"),
         ("SOL", "USD"),
         ("XRP", "USD"),
+        ("ADA", "USD"),
+        ("DOG", "USD"),
+        ("DOT", "USD"),
+        ("LTC", "USD"),
+        ("AVX", "USD"),
     ]
 
     def __init__(
@@ -130,7 +158,7 @@ class ForexPairScanner:
 
     def top_risk_pairs(self, *, limit: int = 5, force_refresh: bool = False) -> dict[str, object]:
         """Return top daily risk pairs with automatic scan refresh."""
-        safe_limit = max(1, min(limit, 20))
+        safe_limit = max(1, min(limit, 50))
         scan_date = self.ensure_daily_scan(force_refresh=force_refresh)
         rankings = self.audit_store.get_top_risk_pairs(scan_date=scan_date, limit=safe_limit)
         latest_update_utc = None

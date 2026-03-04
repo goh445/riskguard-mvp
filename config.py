@@ -6,6 +6,15 @@ import os
 from dataclasses import dataclass
 
 
+def _first_non_empty_env(*names: str) -> str:
+    """Return first non-empty environment variable value."""
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings and thresholds."""
@@ -24,8 +33,16 @@ class Settings:
     auto_parameter_tuning: bool = os.getenv("AUTO_PARAMETER_TUNING", "true").lower() == "true"
     news_fetch_timeout_seconds: int = int(os.getenv("NEWS_FETCH_TIMEOUT_SECONDS", "2"))
     news_cache_ttl_seconds: int = int(os.getenv("NEWS_CACHE_TTL_SECONDS", "600"))
-    use_gemini_news: bool = os.getenv("USE_GEMINI_NEWS", "false").lower() == "true"
-    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_api_key: str = _first_non_empty_env(
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_GENERATIVE_AI_API_KEY",
+    )
+    use_gemini_news: bool = (
+        os.getenv("USE_GEMINI_NEWS", "").lower() == "true"
+        if os.getenv("USE_GEMINI_NEWS") is not None
+        else bool(gemini_api_key)
+    )
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 

@@ -127,7 +127,7 @@ with st.sidebar:
         st.success(f"Backend OK: {health_url}")
     else:
         st.warning(f"Backend unreachable: {health_url}")
-    board_limit = st.slider("Board asset count", min_value=10, max_value=40, value=24, step=2)
+    board_limit = st.slider("Board asset count", min_value=10, max_value=50, value=50, step=2)
     auto_refresh = st.toggle("Auto refresh leaderboard", value=False)
     refresh_seconds = st.slider("Refresh interval (sec)", min_value=15, max_value=120, value=30, step=5)
 
@@ -276,6 +276,10 @@ with tab_analyze:
             st.caption(
                 f"News source: {debug_payload.get('news_source', 'unknown')} | "
                 f"Headlines used: {debug_payload.get('news_sample_size', 0)}"
+            )
+            st.caption(
+                f"Gemini status: {debug_payload.get('gemini_status', 'unknown')} | "
+                f"Reason: {debug_payload.get('gemini_reason', 'unknown')}"
             )
 
             info_col_1, info_col_2 = st.columns(2)

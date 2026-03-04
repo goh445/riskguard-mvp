@@ -94,6 +94,8 @@ class GlobalNewsIntelligence:
         self._lock = Lock()
         self._cached_at_epoch = 0.0
         self._cached_signals: dict[str, Any] | None = None
+        self._last_gemini_status = "disabled"
+        self._last_gemini_reason = "USE_GEMINI_NEWS is false or missing key"
 
     def set_feed_sources(self, sources: list[str]) -> None:
         """Dynamically update whitelist feed sources without restart."""
@@ -138,6 +140,8 @@ class GlobalNewsIntelligence:
         signals["static_feed_count"] = len(static_sources)
         signals["dynamic_feed_count"] = len(dynamic_sources)
         signals["gemini_enabled"] = bool(self.use_gemini_news and self.gemini_api_key)
+        signals["gemini_status"] = self._last_gemini_status
+        signals["gemini_reason"] = self._last_gemini_reason
         with self._lock:
             self._cached_signals = signals
             self._cached_at_epoch = now_epoch
@@ -159,7 +163,17 @@ class GlobalNewsIntelligence:
 
     def _maybe_enhance_with_gemini(self, baseline: dict[str, Any], headlines: list[str]) -> dict[str, Any]:
         """Enhance baseline signals using Gemini if configured."""
-        if not self.use_gemini_news or not self.gemini_api_key or not headlines:
+        if not self.gemini_api_key:
+            self._last_gemini_status = "disabled"
+            self._last_gemini_reason = "No Gemini API key found in env"
+            return baseline
+        if not self.use_gemini_news:
+            self._last_gemini_status = "disabled"
+            self._last_gemini_reason = "USE_GEMINI_NEWS is false"
+            return baseline
+        if not headlines:
+            self._last_gemini_status = "skipped"
+            self._last_gemini_reason = "No headlines available"
             return baseline
 
         prompt = (
@@ -211,8 +225,12 @@ class GlobalNewsIntelligence:
 
             merged["news_source"] = f"{baseline.get('news_source', 'rss')}+gemini"
             merged["news_updated_at_utc"] = datetime.now(timezone.utc).isoformat()
+            self._last_gemini_status = "enabled"
+            self._last_gemini_reason = "Gemini refinement applied"
             return merged
         except (requests.RequestException, ValueError, json.JSONDecodeError, KeyError, TypeError):
+            self._last_gemini_status = "error"
+            self._last_gemini_reason = "Gemini request failed; fallback to deterministic signals"
             return baseline
 
     @staticmethod
