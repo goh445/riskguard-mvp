@@ -193,7 +193,7 @@ if st.button("Refresh Daily Risk Leaderboard"):
                 }
                 for row in rankings
             ]
-            st.dataframe(table_rows, width="stretch")
+            st.dataframe(table_rows)
         else:
             st.info("No rankings available yet.")
     except requests.RequestException as exc:
