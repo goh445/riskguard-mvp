@@ -177,7 +177,7 @@ with tab_board:
         c3.metric("Commodity", commodity_count)
         c4.metric("Crypto", crypto_count)
 
-        st.dataframe(rows, width="stretch")
+        st.dataframe(rows, use_container_width=True)
     else:
         st.info("No rankings available yet.")
 
@@ -352,10 +352,10 @@ with tab_history:
             xaxis=dict(title="Analysis Time (Asia/Kuala_Lumpur)", tickformat="%Y-%m-%d %H:%M:%S"),
             hovermode="x unified",
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
         if point_count < 2:
             st.caption("Timeline currently has 1 data point; submit more analyses to see a trend line.")
-        st.dataframe(chart_data, width="stretch")
+        st.dataframe(chart_data, use_container_width=True)
     else:
         st.info("No forex risk events yet. Submit analysis to build timeline.")
 
