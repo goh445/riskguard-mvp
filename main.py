@@ -208,7 +208,7 @@ def analyze_forex_risk(
 ) -> ForexRiskResponse:
     """Analyze forex market risk using network contagion and hidden-link logic."""
     metrics = forex_market_data.fetch_snapshot(payload.base_currency, payload.quote_currency)
-    news_signals = news_intelligence.derive_signals() if settings.auto_parameter_tuning else {}
+    news_signals = news_intelligence.derive_signals()
     user_metadata = payload.metadata or {}
 
     merged_metadata = {
@@ -219,7 +219,7 @@ def analyze_forex_risk(
         "market_last_rate": metrics["last_rate"],
         "market_last_timestamp": metrics.get("last_market_timestamp"),
         "market_data_fetched_at_utc": metrics.get("fetched_at_utc"),
-        "auto_parameter_tuning": settings.auto_parameter_tuning,
+        "auto_parameter_tuning": True,
     }
 
     enriched_payload = payload.model_copy(

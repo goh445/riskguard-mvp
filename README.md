@@ -171,7 +171,7 @@ Set these environment variables on Render:
 - `RATE_LIMIT_REQUESTS` = max requests per window (default `60`)
 - `RATE_LIMIT_WINDOW_SECONDS` = window size in seconds (default `60`)
 - `AUDIT_DB_PATH` = SQLite file path (default `data/riskguard_audit.db`)
-- `AUTO_PARAMETER_TUNING` = `true|false` (default `true`)
+- `AUTO_PARAMETER_TUNING` = backward-compatible env var (forex analyze endpoint now always auto-tunes)
 - `NEWS_FETCH_TIMEOUT_SECONDS` = news fetch timeout (default `2`)
 - `NEWS_CACHE_TTL_SECONDS` = cache TTL seconds (default `600`)
 - `USE_GEMINI_NEWS` = `true|false` (default `false`)
@@ -198,6 +198,7 @@ Gemini usage in current system:
 
 - `USE_GEMINI_NEWS=true` and valid `GEMINI_API_KEY` => backend uses Gemini to refine news-derived parameters.
 - `USE_GEMINI_NEWS=false` or missing key => system falls back to deterministic RSS intelligence only.
+- Auto tuning of market + news signals is always enabled for `/analyze-forex-risk` and does not require any frontend toggle.
 
 Current AI status fields (returned in `debug` from `/analyze-forex-risk`):
 

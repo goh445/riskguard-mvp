@@ -15,6 +15,9 @@ import streamlit as st
 API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-forex-risk")
 API_KEY = os.getenv("BACKEND_API_KEY", "")
 
+COMMODITY_BASES = {"XAU", "XAG", "XPT", "XPD", "XBR", "XWT"}
+CRYPTO_BASES = {"BTC", "ETH", "SOL", "BNB", "XRP"}
+
 
 def normalize_analyze_url(api_url: str) -> str:
     """Normalize analyze endpoint to forex-focused route."""
@@ -89,12 +92,28 @@ def call_top_pairs_api(api_url: str, api_key: str, limit: int = 10) -> dict[str,
     ) from last_exception
 
 
+def pair_category(pair: str) -> str:
+    """Classify pair into Forex, Commodity, or Crypto."""
+    try:
+        base = pair.split("/")[0].upper()
+    except (AttributeError, IndexError):
+        return "Forex"
+    if base in COMMODITY_BASES:
+        return "Commodity"
+    if base in CRYPTO_BASES:
+        return "Crypto"
+    return "Forex"
+
+
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
 st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
 st.caption(f"Latest UI refresh (UTC): {datetime.now(ZoneInfo('UTC')).isoformat(timespec='seconds')}")
+st.info("AI auto-tuning is always ON: global news + market data are automatically used in every analysis.")
 
 if "forex_history" not in st.session_state:
     st.session_state.forex_history = []
+if "leaderboard_cache" not in st.session_state:
+    st.session_state.leaderboard_cache = None
 
 with st.sidebar:
     st.header("API Settings")
@@ -108,183 +127,237 @@ with st.sidebar:
         st.success(f"Backend OK: {health_url}")
     else:
         st.warning(f"Backend unreachable: {health_url}")
+    board_limit = st.slider("Board asset count", min_value=10, max_value=40, value=24, step=2)
     auto_refresh = st.toggle("Auto refresh leaderboard", value=False)
     refresh_seconds = st.slider("Refresh interval (sec)", min_value=15, max_value=120, value=30, step=5)
 
-st.subheader("Analyze Forex Market Risk")
-with st.form("analyze_forex_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        pair_preset = st.selectbox(
-            "Pair Preset",
-            options=[
-                "USD/MYR",
-                "EUR/USD",
-                "USD/JPY",
-                "USD/INR",
-                "USD/KRW",
-                "USD/BRL",
-                "USD/MXN",
-                "XAU/USD",
-                "XAG/USD",
-                "XBR/USD",
-                "XWT/USD",
-                "BTC/USD",
-                "ETH/USD",
-                "SOL/USD",
-                "Custom",
-            ],
-            index=0,
-        )
-        preset_base, preset_quote = (pair_preset.split("/") if pair_preset != "Custom" else ("USD", "MYR"))
-        base_currency = st.text_input("Base Currency", value=preset_base)
-        quote_currency = st.text_input("Quote Currency", value=preset_quote)
-    with col2:
-        st.info("Autonomous AI mode: macro/news parameters are auto-derived from global feeds and market data.")
-        timestamp = st.text_input(
-            "Timestamp (ISO8601, Malaysia TZ)",
-            value=datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
-        )
+tab_board, tab_analyze, tab_history = st.tabs(
+    ["Live Multi-Asset Board", "Analyze One Pair", "Risk History Timeline"]
+)
 
-    submitted = st.form_submit_button("Analyze Forex Risk")
+with tab_board:
+    st.subheader("Top Risk Board (Forex + Commodity + Crypto)")
+    refresh_now = st.button("Refresh Board", type="primary")
+    if refresh_now or st.session_state.leaderboard_cache is None:
+        try:
+            with st.spinner("Loading multi-asset risk board..."):
+                st.session_state.leaderboard_cache = call_top_pairs_api(
+                    api_url=normalized_api_url,
+                    api_key=api_key,
+                    limit=board_limit,
+                )
+        except requests.RequestException as exc:
+            st.error(f"Failed to fetch leaderboard: {exc}")
 
-if submitted:
-    payload = {
-        "base_currency": base_currency,
-        "quote_currency": quote_currency,
-        "timestamp": timestamp,
-        "metadata": {},
-    }
-    try:
-        with st.spinner("Analyzing forex market risk... (first request may be slower due to backend cold start)"):
-            result = call_analyze_api(api_url=normalized_api_url, payload=payload, api_key=api_key)
-
-        st.metric(label="Risk Score", value=f"{result['score']} ({result['status']})")
-
-        st.markdown("### Reasons")
-        if result.get("reasons"):
-            for reason in result["reasons"]:
-                st.write(f"- {reason}")
-        else:
-            st.write("- No risk flags triggered.")
-
-        st.markdown("### Flags")
-        st.write(result.get("flags", []))
-        st.markdown("### Hidden Links")
-        st.write(result.get("hidden_links", []))
-        debug_payload = result.get("debug", {})
-        st.markdown("### AI Auto-Tuning Status")
-        ai_col_1, ai_col_2, ai_col_3 = st.columns(3)
-        ai_col_1.metric("Auto Parameter Tuning", "ON" if debug_payload.get("auto_parameter_tuning") else "OFF")
-        ai_col_2.metric(
-            "Gemini News Enhance",
-            "ON" if debug_payload.get("gemini_enabled") else "OFF",
-        )
-        ai_col_3.metric(
-            "News Feeds",
-            f"{debug_payload.get('successful_feed_count', 0)}/{debug_payload.get('active_feed_count', 0)}",
-        )
-        st.caption(
-            f"News source: {debug_payload.get('news_source', 'unknown')} | "
-            f"Headlines used: {debug_payload.get('news_sample_size', 0)}"
-        )
-        market_source = debug_payload.get("market_data_source", "unknown")
-        market_ts = debug_payload.get("market_last_timestamp")
-        fetched_ts = debug_payload.get("market_data_fetched_at_utc")
-        st.caption(
-            f"Market source: {market_source} | Market timestamp: {market_ts} | Data fetched at (UTC): {fetched_ts}"
-        )
-        with st.expander("Debug"):
-            st.json(debug_payload)
-
-        event_time = datetime.now(ZoneInfo("Asia/Kuala_Lumpur"))
-        st.session_state.forex_history.append(
-            {
-                "analyzed_at": event_time,
-                "time": event_time.isoformat(timespec="milliseconds"),
-                "pair": f"{base_currency.upper()}/{quote_currency.upper()}",
-                "score": result["score"],
-                "status": result["status"],
-                "flags": ", ".join(result.get("flags", [])),
-                "hidden_links": " | ".join(result.get("hidden_links", [])),
-                "market_source": debug_payload.get("market_data_source"),
-                "news_source": debug_payload.get("news_source"),
-                "headlines": debug_payload.get("news_sample_size", 0),
-                "auto_tuning": bool(debug_payload.get("auto_parameter_tuning")),
-                "gemini": bool(debug_payload.get("gemini_enabled")),
-            }
-        )
-    except requests.RequestException as exc:
-        st.error(
-            "Failed to call API after retries. If using Render free plan, wait 30-60 seconds for cold start and try again. "
-            f"Details: {exc}"
-        )
-
-st.markdown("## Forex Risk History")
-if st.session_state.forex_history:
-    chart_data = sorted(st.session_state.forex_history, key=lambda row: row["analyzed_at"])
-    point_count = len(chart_data)
-    chart_common_args = {
-        "data_frame": chart_data,
-        "x": "analyzed_at",
-        "y": "score",
-        "color": "pair",
-        "title": "Forex & Commodity & Crypto Risk Score Timeline",
-        "hover_data": [
-            "time",
-            "status",
-            "flags",
-            "hidden_links",
-            "market_source",
-            "news_source",
-            "headlines",
-            "auto_tuning",
-            "gemini",
-        ],
-    }
-    if point_count < 2:
-        fig = px.scatter(**chart_common_args)
-        fig.update_traces(marker=dict(size=10))
-    else:
-        fig = px.line(**chart_common_args, markers=True)
-        fig.update_traces(line=dict(width=3), marker=dict(size=9))
-    fig.update_layout(
-        height=460,
-        yaxis=dict(range=[0, 100], title="Risk Score"),
-        xaxis=dict(title="Analysis Time (Asia/Kuala_Lumpur)", tickformat="%Y-%m-%d %H:%M:%S"),
-        hovermode="x unified",
-    )
-    st.plotly_chart(fig, width="stretch")
-    if point_count < 2:
-        st.caption("Timeline currently has 1 data point; submit more analyses to see a trend line.")
-    st.markdown("### Timeline Details")
-    st.dataframe(chart_data)
-else:
-    st.info("No forex risk events yet. Submit analysis above to build timeline.")
-
-st.markdown("## Daily Top Risk Pairs")
-if st.button("Refresh Daily Risk Leaderboard"):
-    try:
-        with st.spinner("Fetching top risk pairs..."):
-            top_pairs = call_top_pairs_api(api_url=normalized_api_url, api_key=api_key, limit=10)
-        st.caption(f"Scan date: {top_pairs.get('scan_date')}")
-        st.caption(f"Latest leaderboard update (UTC): {top_pairs.get('latest_update_utc')}")
-        rankings = top_pairs.get("rankings", [])
-        if rankings:
-            table_rows = [
+    board = st.session_state.leaderboard_cache or {}
+    st.caption(f"Scan date: {board.get('scan_date')}")
+    st.caption(f"Latest leaderboard update (UTC): {board.get('latest_update_utc')}")
+    rankings = board.get("rankings", [])
+    if rankings:
+        rows = []
+        for row in rankings:
+            pair = str(row.get("pair", ""))
+            rows.append(
                 {
-                    "pair": row.get("pair"),
+                    "category": pair_category(pair),
+                    "pair": pair,
                     "score": row.get("score"),
                     "status": row.get("status"),
                     "flags": ", ".join(row.get("flags", [])),
                 }
-                for row in rankings
-            ]
-            st.dataframe(table_rows)
+            )
+
+        total_count = len(rows)
+        forex_count = sum(1 for row in rows if row["category"] == "Forex")
+        commodity_count = sum(1 for row in rows if row["category"] == "Commodity")
+        crypto_count = sum(1 for row in rows if row["category"] == "Crypto")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Assets Shown", total_count)
+        c2.metric("Forex", forex_count)
+        c3.metric("Commodity", commodity_count)
+        c4.metric("Crypto", crypto_count)
+
+        st.dataframe(rows, width="stretch")
+    else:
+        st.info("No rankings available yet.")
+
+with tab_analyze:
+    st.subheader("Analyze Pair Risk")
+    with st.form("analyze_forex_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            pair_preset = st.selectbox(
+                "Pair Preset",
+                options=[
+                    "USD/MYR",
+                    "EUR/USD",
+                    "USD/JPY",
+                    "GBP/USD",
+                    "USD/CHF",
+                    "AUD/USD",
+                    "NZD/USD",
+                    "USD/CAD",
+                    "USD/INR",
+                    "USD/KRW",
+                    "USD/BRL",
+                    "USD/MXN",
+                    "USD/ZAR",
+                    "XAU/USD",
+                    "XAG/USD",
+                    "XPT/USD",
+                    "XPD/USD",
+                    "XBR/USD",
+                    "XWT/USD",
+                    "BTC/USD",
+                    "ETH/USD",
+                    "SOL/USD",
+                    "BNB/USD",
+                    "XRP/USD",
+                    "Custom",
+                ],
+                index=0,
+            )
+            preset_base, preset_quote = (pair_preset.split("/") if pair_preset != "Custom" else ("USD", "MYR"))
+            base_currency = st.text_input("Base Currency", value=preset_base)
+            quote_currency = st.text_input("Quote Currency", value=preset_quote)
+        with col2:
+            timestamp = st.text_input(
+                "Timestamp (ISO8601, Malaysia TZ)",
+                value=datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
+            )
+            st.caption("No manual AI switch needed. Auto-tuning always runs in backend.")
+
+        submitted = st.form_submit_button("Analyze Forex Risk")
+
+    if submitted:
+        payload = {
+            "base_currency": base_currency,
+            "quote_currency": quote_currency,
+            "timestamp": timestamp,
+            "metadata": {},
+        }
+        progress_text = st.empty()
+        progress = st.progress(0)
+        try:
+            progress_text.info("Step 1/4 · Preparing market and news signal pipeline...")
+            progress.progress(20)
+            time.sleep(0.15)
+
+            progress_text.info("Step 2/4 · Pulling global market context...")
+            progress.progress(45)
+            time.sleep(0.15)
+
+            progress_text.info("Step 3/4 · Running graph contagion analysis...")
+            progress.progress(70)
+            result = call_analyze_api(api_url=normalized_api_url, payload=payload, api_key=api_key)
+
+            progress_text.info("Step 4/4 · Finalizing risk score and insights...")
+            progress.progress(100)
+            time.sleep(0.1)
+            progress_text.success("Analysis complete")
+
+            headline_1, headline_2, headline_3 = st.columns(3)
+            headline_1.metric("Risk Score", f"{result['score']}")
+            headline_2.metric("Risk Status", result["status"])
+            headline_3.metric("Pair", f"{base_currency.upper()}/{quote_currency.upper()}")
+
+            debug_payload = result.get("debug", {})
+            ai_col_1, ai_col_2, ai_col_3 = st.columns(3)
+            ai_col_1.metric("Auto Parameter Tuning", "ON")
+            ai_col_2.metric("Gemini Enhancement", "ON" if debug_payload.get("gemini_enabled") else "OFF")
+            ai_col_3.metric(
+                "News Feeds",
+                f"{debug_payload.get('successful_feed_count', 0)}/{debug_payload.get('active_feed_count', 0)}",
+            )
+            st.caption(
+                f"News source: {debug_payload.get('news_source', 'unknown')} | "
+                f"Headlines used: {debug_payload.get('news_sample_size', 0)}"
+            )
+
+            info_col_1, info_col_2 = st.columns(2)
+            with info_col_1:
+                st.markdown("### Reasons")
+                if result.get("reasons"):
+                    for reason in result["reasons"]:
+                        st.write(f"- {reason}")
+                else:
+                    st.write("- No risk flags triggered.")
+            with info_col_2:
+                st.markdown("### Signal Flags")
+                st.write(result.get("flags", []))
+                st.markdown("### Hidden Links")
+                st.write(result.get("hidden_links", []))
+
+            with st.expander("Detailed Debug Data"):
+                st.json(debug_payload)
+
+            event_time = datetime.now(ZoneInfo("Asia/Kuala_Lumpur"))
+            st.session_state.forex_history.append(
+                {
+                    "analyzed_at": event_time,
+                    "time": event_time.isoformat(timespec="milliseconds"),
+                    "pair": f"{base_currency.upper()}/{quote_currency.upper()}",
+                    "category": pair_category(f"{base_currency.upper()}/{quote_currency.upper()}"),
+                    "score": result["score"],
+                    "status": result["status"],
+                    "flags": ", ".join(result.get("flags", [])),
+                    "hidden_links": " | ".join(result.get("hidden_links", [])),
+                    "market_source": debug_payload.get("market_data_source"),
+                    "news_source": debug_payload.get("news_source"),
+                    "headlines": debug_payload.get("news_sample_size", 0),
+                    "auto_tuning": True,
+                    "gemini": bool(debug_payload.get("gemini_enabled")),
+                }
+            )
+        except requests.RequestException as exc:
+            progress.progress(100)
+            progress_text.error(
+                "Analysis request failed. If using Render free plan, wait 30-60 seconds for cold start and try again. "
+                f"Details: {exc}"
+            )
+
+with tab_history:
+    st.subheader("Forex Risk History")
+    if st.session_state.forex_history:
+        chart_data = sorted(st.session_state.forex_history, key=lambda row: row["analyzed_at"])
+        point_count = len(chart_data)
+        chart_common_args = {
+            "data_frame": chart_data,
+            "x": "analyzed_at",
+            "y": "score",
+            "color": "pair",
+            "title": "Forex & Commodity & Crypto Risk Score Timeline",
+            "hover_data": [
+                "time",
+                "category",
+                "status",
+                "flags",
+                "hidden_links",
+                "market_source",
+                "news_source",
+                "headlines",
+                "auto_tuning",
+                "gemini",
+            ],
+        }
+        if point_count < 2:
+            fig = px.scatter(**chart_common_args)
+            fig.update_traces(marker=dict(size=10))
         else:
-            st.info("No rankings available yet.")
-    except requests.RequestException as exc:
-        st.error(f"Failed to fetch leaderboard: {exc}")
+            fig = px.line(**chart_common_args, markers=True)
+            fig.update_traces(line=dict(width=3), marker=dict(size=9))
+        fig.update_layout(
+            height=460,
+            yaxis=dict(range=[0, 100], title="Risk Score"),
+            xaxis=dict(title="Analysis Time (Asia/Kuala_Lumpur)", tickformat="%Y-%m-%d %H:%M:%S"),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig, width="stretch")
+        if point_count < 2:
+            st.caption("Timeline currently has 1 data point; submit more analyses to see a trend line.")
+        st.dataframe(chart_data, width="stretch")
+    else:
+        st.info("No forex risk events yet. Submit analysis to build timeline.")
 
 if auto_refresh:
     time.sleep(refresh_seconds)
