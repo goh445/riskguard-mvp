@@ -11,6 +11,7 @@ Financial fraud detection and risk scoring system built with FastAPI + Streamlit
 - Optional API key authentication (`X-API-Key`).
 - Per-client rate limiting with configurable thresholds.
 - SQLite audit trail and 24-hour ops summary endpoint.
+- Zero-cost forex risk graph analytics with hidden-link detection (`networkx`).
 - Streamlit dashboard with score display and trend charts.
 
 ## Project Structure
@@ -72,9 +73,31 @@ uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 
 `POST /analyze-transaction`
 
+`POST /analyze-forex-risk`
+
 Additional operational endpoint:
 
 - `GET /ops/summary`
+
+### Forex network risk request example
+
+```bash
+curl -X POST http://127.0.0.1:8000/analyze-forex-risk \
+  -H "Content-Type: application/json" \
+  -d '{
+    "base_currency": "MYR",
+    "quote_currency": "EUR",
+    "observed_volatility": 0.012,
+    "spread_bps": 14,
+    "timestamp": "2026-03-01T12:34:56+08:00",
+    "metadata": {
+      "news_sentiment": -0.2,
+      "macro_stress": 0.5
+    }
+  }'
+```
+
+Response includes `hidden_links` and network debug fields to expose indirect contagion paths.
 
 ## Backend Production Config
 

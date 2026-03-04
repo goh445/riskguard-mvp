@@ -45,3 +45,40 @@ class RiskResponse(BaseModel):
     flags: list[str]
     reasons: list[str]
     debug: dict[str, Any] | None = None
+
+
+class ForexRiskRequest(BaseModel):
+    """Input payload for forex market network risk analysis."""
+
+    base_currency: str = Field(..., min_length=3, max_length=3)
+    quote_currency: str = Field(..., min_length=3, max_length=3)
+    observed_volatility: float = Field(..., ge=0)
+    spread_bps: float = Field(..., ge=0)
+    timestamp: datetime
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("base_currency", "quote_currency")
+    @classmethod
+    def normalize_currency_code(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if len(normalized) != 3 or not normalized.isalpha():
+            raise ValueError("currency must be a 3-letter ISO code")
+        return normalized
+
+    @field_validator("timestamp")
+    @classmethod
+    def validate_timezone_aware_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
+
+
+class ForexRiskResponse(BaseModel):
+    """Output payload for forex network risk analysis."""
+
+    score: int
+    status: str
+    flags: list[str]
+    reasons: list[str]
+    hidden_links: list[str]
+    debug: dict[str, Any] | None = None
