@@ -194,6 +194,11 @@ About `RISKGUARD_API_KEY` and `BACKEND_API_KEY`:
 - `BACKEND_API_KEY`: frontend key used to call backend (set on Streamlit secrets or local `.env`)
 - If not set, backend currently allows unauthenticated calls (development mode)
 
+Gemini usage in current system:
+
+- `USE_GEMINI_NEWS=true` and valid `GEMINI_API_KEY` => backend uses Gemini to refine news-derived parameters.
+- `USE_GEMINI_NEWS=false` or missing key => system falls back to deterministic RSS intelligence only.
+
 Will app still work if key is not pushed?
 
 - Yes. Deployed services read keys from platform environment variables/secrets, not from Git commits.

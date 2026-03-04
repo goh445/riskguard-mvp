@@ -121,9 +121,17 @@ with st.form("analyze_forex_form"):
                 "USD/MYR",
                 "EUR/USD",
                 "USD/JPY",
+                "USD/INR",
+                "USD/KRW",
+                "USD/BRL",
+                "USD/MXN",
                 "XAU/USD",
                 "XAG/USD",
                 "XBR/USD",
+                "XWT/USD",
+                "BTC/USD",
+                "ETH/USD",
+                "SOL/USD",
                 "Custom",
             ],
             index=0,
@@ -180,6 +188,9 @@ if submitted:
                 "pair": f"{base_currency.upper()}/{quote_currency.upper()}",
                 "score": result["score"],
                 "status": result["status"],
+                "flags": ", ".join(result.get("flags", [])),
+                "hidden_links": " | ".join(result.get("hidden_links", [])),
+                "market_source": debug_payload.get("market_data_source"),
             }
         )
     except requests.RequestException as exc:
@@ -191,8 +202,17 @@ if submitted:
 st.markdown("## Forex Risk History")
 if st.session_state.forex_history:
     chart_data = st.session_state.forex_history
-    fig = px.line(chart_data, x="time", y="score", color="pair", title="Forex Pair Risk Score Timeline")
+    fig = px.line(
+        chart_data,
+        x="time",
+        y="score",
+        color="pair",
+        title="Forex & Commodity & Crypto Risk Score Timeline",
+        hover_data=["status", "flags", "hidden_links", "market_source"],
+    )
     st.plotly_chart(fig, width="stretch")
+    st.markdown("### Timeline Details")
+    st.dataframe(st.session_state.forex_history)
 else:
     st.info("No forex risk events yet. Submit analysis above to build timeline.")
 

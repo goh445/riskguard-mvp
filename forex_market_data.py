@@ -14,6 +14,7 @@ class ForexMarketDataClient:
 
     BASE_URL = "https://api.frankfurter.app"
     YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=2mo&interval=1d"
+    COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=60&interval=daily"
     COMMODITY_TICKERS = {
         "XAU": "GC=F",  # Gold
         "XAG": "SI=F",  # Silver
@@ -21,6 +22,13 @@ class ForexMarketDataClient:
         "XPD": "PA=F",  # Palladium
         "XBR": "BZ=F",  # Brent crude
         "XWT": "CL=F",  # WTI crude
+    }
+    CRYPTO_IDS = {
+        "BTC": "bitcoin",
+        "ETH": "ethereum",
+        "BNB": "binancecoin",
+        "SOL": "solana",
+        "XRP": "ripple",
     }
 
     @staticmethod
@@ -107,10 +115,50 @@ class ForexMarketDataClient:
         except requests.RequestException:
             return self._fallback_snapshot(reason="commodity_market_data_unavailable")
 
+    def _fetch_crypto_snapshot(self, base: str, quote: str) -> dict[str, Any]:
+        crypto_code = base if base in self.CRYPTO_IDS else quote
+        coin_id = self.CRYPTO_IDS[crypto_code]
+
+        if {base, quote} != {crypto_code, "USD"}:
+            return self._fallback_snapshot(reason="unsupported_crypto_cross")
+
+        url = self.COINGECKO_URL.format(coin_id=coin_id)
+        try:
+            response = requests.get(url, timeout=12)
+            response.raise_for_status()
+            payload = response.json()
+            prices = payload.get("prices", [])
+
+            series: list[float] = []
+            last_market_timestamp = None
+            for point in prices:
+                if isinstance(point, list) and len(point) >= 2:
+                    ts_ms, price = point[0], point[1]
+                    if isinstance(price, (int, float)) and price > 0:
+                        series.append(float(price))
+                        last_market_timestamp = datetime.fromtimestamp(
+                            float(ts_ms) / 1000.0,
+                            tz=timezone.utc,
+                        ).isoformat()
+
+            if base == "USD" and quote == crypto_code:
+                series = [1.0 / value for value in series if value > 0]
+
+            return self._snapshot_from_series(
+                series,
+                source=f"coingecko:{coin_id}",
+                last_market_timestamp=last_market_timestamp,
+            )
+        except requests.RequestException:
+            return self._fallback_snapshot(reason="crypto_market_data_unavailable")
+
     def fetch_snapshot(self, base: str, quote: str) -> dict[str, Any]:
         """Return derived volatility and spread proxy from recent daily rates."""
         if base in self.COMMODITY_TICKERS or quote in self.COMMODITY_TICKERS:
             return self._fetch_commodity_snapshot(base, quote)
+
+        if base in self.CRYPTO_IDS or quote in self.CRYPTO_IDS:
+            return self._fetch_crypto_snapshot(base, quote)
 
         end_date = date.today()
         start_date = end_date - timedelta(days=45)
