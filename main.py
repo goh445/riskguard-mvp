@@ -16,6 +16,7 @@ from data.generate_mock_data import save_mock_transactions
 from data_utils import DATA_FILE, load_transactions
 from forex_market_data import ForexMarketDataClient
 from forex_graph_engine import ForexGraphRiskEngine
+from forex_pair_scanner import ForexPairScanner
 from models import ForexRiskRequest, ForexRiskResponse, RiskResponse, TransactionRequest
 from risk_engine import RiskEngine
 from service_controls import SlidingWindowRateLimiter, is_api_key_valid
@@ -68,6 +69,11 @@ rate_limiter = SlidingWindowRateLimiter(
     window_seconds=settings.rate_limit_window_seconds,
 )
 audit_store = AuditStore(settings.audit_db_path)
+forex_pair_scanner = ForexPairScanner(
+    audit_store=audit_store,
+    market_data=forex_market_data,
+    graph_engine=forex_graph_engine,
+)
 
 
 def require_api_key(api_key: str | None = Security(api_key_header)) -> None:
@@ -120,6 +126,17 @@ def analyze_transaction(
 def ops_summary(_auth: None = Depends(require_api_key)) -> dict[str, float | int]:
     """Operational summary for latest 24 hours of analyzed transactions."""
     return audit_store.summary_last_24h()
+
+
+@app.get("/ops/top-risk-pairs")
+def top_risk_pairs(
+    limit: int = 5,
+    force_refresh: bool = False,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, object]:
+    """Return today's highest-risk major FX pairs with automatic daily scan."""
+    return forex_pair_scanner.top_risk_pairs(limit=limit, force_refresh=force_refresh)
 
 
 @app.post("/analyze-forex-risk", response_model=ForexRiskResponse)

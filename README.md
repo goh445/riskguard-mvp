@@ -81,6 +81,7 @@ uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 Additional operational endpoint:
 
 - `GET /ops/summary`
+- `GET /ops/top-risk-pairs?limit=10&force_refresh=false`
 
 ### Forex network risk request example
 
@@ -100,6 +101,29 @@ curl -X POST http://127.0.0.1:8000/analyze-forex-risk \
 
 `observed_volatility` and `spread_bps` are optional; backend auto-enriches from free market data.
 Response includes `hidden_links` and network debug fields to expose indirect contagion paths.
+
+## Daily Operational Scan
+
+`/ops/top-risk-pairs` will automatically run a daily scan of major FX pairs (once per day, KL date) and persist rankings.
+
+- `limit`: number of pairs to return (1-20)
+- `force_refresh=true`: rerun full scan immediately
+
+Example:
+
+```bash
+curl "http://127.0.0.1:8000/ops/top-risk-pairs?limit=10"
+```
+
+## How to use `macro_stress` and `news_sentiment`
+
+- `macro_stress` (`0.0` to `1.0`): systemic stress gauge (rates shock, policy uncertainty, liquidity tightening).
+- `news_sentiment` (`-1.0` to `1.0`): directional media/signal bias for the pair.
+
+Are they necessary?
+
+- **Not mandatory**: backend can run without manual inputs and auto-derive from market data.
+- **High value in production**: adding these two signals improves early warning during regime shifts where pure price stats lag.
 
 ## Backend Production Config
 

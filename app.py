@@ -63,6 +63,32 @@ def call_analyze_api(api_url: str, payload: dict[str, object], api_key: str) -> 
     ) from last_exception
 
 
+def call_top_pairs_api(api_url: str, api_key: str, limit: int = 10) -> dict[str, object]:
+    """Fetch daily top-risk forex pairs from ops endpoint with retries."""
+    normalized = normalize_analyze_url(api_url)
+    base_url = normalized
+    for suffix in ["/analyze-forex-risk", "/analyze-transaction"]:
+        if base_url.endswith(suffix):
+            base_url = base_url[: -len(suffix)]
+            break
+
+    endpoint = f"{base_url}/ops/top-risk-pairs?limit={limit}"
+    headers = {"X-API-Key": api_key} if api_key else None
+    last_exception: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            response = requests.get(endpoint, headers=headers, timeout=(8, 45))
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            last_exception = exc
+            if attempt < 3:
+                time.sleep(2)
+    raise requests.RequestException(
+        f"Failed after 3 attempts. Last error: {last_exception}"
+    ) from last_exception
+
+
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
 st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
 
@@ -149,3 +175,26 @@ if st.session_state.forex_history:
     st.plotly_chart(fig, width="stretch")
 else:
     st.info("No forex risk events yet. Submit analysis above to build timeline.")
+
+st.markdown("## Daily Top Risk Pairs")
+if st.button("Refresh Daily Risk Leaderboard"):
+    try:
+        with st.spinner("Fetching top risk pairs..."):
+            top_pairs = call_top_pairs_api(api_url=normalized_api_url, api_key=api_key, limit=10)
+        st.caption(f"Scan date: {top_pairs.get('scan_date')}")
+        rankings = top_pairs.get("rankings", [])
+        if rankings:
+            table_rows = [
+                {
+                    "pair": row.get("pair"),
+                    "score": row.get("score"),
+                    "status": row.get("status"),
+                    "flags": ", ".join(row.get("flags", [])),
+                }
+                for row in rankings
+            ]
+            st.dataframe(table_rows, width="stretch")
+        else:
+            st.info("No rankings available yet.")
+    except requests.RequestException as exc:
+        st.error(f"Failed to fetch leaderboard: {exc}")
