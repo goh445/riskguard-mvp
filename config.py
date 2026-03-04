@@ -24,6 +24,9 @@ class Settings:
     auto_parameter_tuning: bool = os.getenv("AUTO_PARAMETER_TUNING", "true").lower() == "true"
     news_fetch_timeout_seconds: int = int(os.getenv("NEWS_FETCH_TIMEOUT_SECONDS", "2"))
     news_cache_ttl_seconds: int = int(os.getenv("NEWS_CACHE_TTL_SECONDS", "600"))
+    use_gemini_news: bool = os.getenv("USE_GEMINI_NEWS", "false").lower() == "true"
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 
 settings = Settings()

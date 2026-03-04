@@ -15,6 +15,7 @@ Financial fraud detection and risk scoring system built with FastAPI + Streamlit
 - Free market data enrichment from Frankfurter API with fallback model.
 - Commodity-linked coverage (Gold/Silver/Platinum/Palladium/Brent/WTI) with free Yahoo market feed.
 - Autonomous AI parameter tuning using global news + market data (no manual slider tuning).
+- Optional Gemini API enhancement for broader news interpretation and parameter refinement.
 - Streamlit dashboard with score display and trend charts.
 
 ## Project Structure
@@ -155,6 +156,7 @@ In this system, these values are now produced automatically by backend AI tuning
 - `news_sentiment`: derived from global RSS headline polarity
 - `macro_stress`: derived from global risk terms + market stress context
 - extra auto parameters: `policy_uncertainty`, `geopolitical_risk`, `liquidity_risk`, `commodity_shock`
+  plus `systemic_contagion`, `fraud_pressure_index`
 
 Manual tuning is no longer required in the Streamlit UI.
 
@@ -169,6 +171,24 @@ Set these environment variables on Render:
 - `AUTO_PARAMETER_TUNING` = `true|false` (default `true`)
 - `NEWS_FETCH_TIMEOUT_SECONDS` = news fetch timeout (default `2`)
 - `NEWS_CACHE_TTL_SECONDS` = cache TTL seconds (default `600`)
+- `USE_GEMINI_NEWS` = `true|false` (default `false`)
+- `GEMINI_API_KEY` = your Gemini API key
+- `GEMINI_MODEL` = model name (default `gemini-1.5-flash`)
+
+## Gemini API Key Placement (Important)
+
+Do **not** commit API keys into GitHub.
+
+Where to set keys:
+
+- Render backend: Dashboard → Environment → add `GEMINI_API_KEY`
+- Streamlit Cloud frontend (if needed): App settings → Secrets
+- Local dev: create `.env` from `.env.example` and keep it untracked
+
+Will app still work if key is not pushed?
+
+- Yes. Deployed services read keys from platform environment variables/secrets, not from Git commits.
+- This is the correct and secure production pattern.
 
 Observability headers returned on every API response:
 

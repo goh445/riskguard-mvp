@@ -68,6 +68,9 @@ forex_market_data = ForexMarketDataClient()
 news_intelligence = GlobalNewsIntelligence(
     timeout_seconds=settings.news_fetch_timeout_seconds,
     cache_ttl_seconds=settings.news_cache_ttl_seconds,
+    use_gemini_news=settings.use_gemini_news,
+    gemini_api_key=settings.gemini_api_key,
+    gemini_model=settings.gemini_model,
 )
 rate_limiter = SlidingWindowRateLimiter(
     max_requests=settings.rate_limit_requests,

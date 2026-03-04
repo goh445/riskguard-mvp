@@ -129,6 +129,8 @@ class ForexGraphRiskEngine:
         geopolitical_risk = float(metadata.get("geopolitical_risk", 0.0))
         liquidity_risk = float(metadata.get("liquidity_risk", 0.0))
         commodity_shock = float(metadata.get("commodity_shock", 0.0))
+        systemic_contagion = float(metadata.get("systemic_contagion", 0.0))
+        fraud_pressure_index = float(metadata.get("fraud_pressure_index", 0.0))
         if sentiment < -0.25 or macro_stress > 0.6:
             flags.append("macro_sentiment_stress")
             reasons.append("Macro/news signals suggest elevated directional stress")
@@ -144,6 +146,12 @@ class ForexGraphRiskEngine:
         if commodity_shock > 0.55:
             flags.append("commodity_shock")
             reasons.append("Commodity-linked volatility likely to spill over into FX pairs")
+        if systemic_contagion > 0.55:
+            flags.append("systemic_contagion")
+            reasons.append("Cross-market contagion pressure indicates systemic spillover risk")
+        if fraud_pressure_index > 0.55:
+            flags.append("fraud_pressure_index")
+            reasons.append("Fraud pressure index suggests elevated manipulation or dislocation risk")
 
         score = 0.0
         score += min(observed_volatility * 2200, 35)
@@ -155,6 +163,8 @@ class ForexGraphRiskEngine:
         score += min(geopolitical_risk * 8, 8)
         score += min(liquidity_risk * 7, 7)
         score += min(commodity_shock * 7, 7)
+        score += min(systemic_contagion * 10, 10)
+        score += min(fraud_pressure_index * 10, 10)
         score = min(100.0, score)
 
         debug: dict[str, Any] = {
@@ -169,6 +179,8 @@ class ForexGraphRiskEngine:
             "geopolitical_risk": geopolitical_risk,
             "liquidity_risk": liquidity_risk,
             "commodity_shock": commodity_shock,
+            "systemic_contagion": systemic_contagion,
+            "fraud_pressure_index": fraud_pressure_index,
             "observed_volatility": round(observed_volatility, 6),
             "spread_bps": round(spread_bps, 2),
             "market_data_source": metadata.get("market_data_source", "manual_or_unknown"),
