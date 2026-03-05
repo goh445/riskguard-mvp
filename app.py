@@ -240,7 +240,7 @@ with tab_board:
                 st.session_state.leaderboard_cache = call_top_pairs_api(
                     api_url=normalized_api_url,
                     api_key=api_key,
-                    limit=50,
+                    limit=200,
                 )
         except requests.RequestException as exc:
             st.error(f"Failed to fetch leaderboard: {exc}")

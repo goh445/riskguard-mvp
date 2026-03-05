@@ -15,7 +15,7 @@ from models import ForexRiskRequest
 class ForexPairScanner:
     """Scan major forex pairs daily and expose top risk leaderboard."""
 
-    MAJOR_PAIRS = [
+    FOREX_PAIRS = [
         ("EUR", "USD"),
         ("USD", "JPY"),
         ("GBP", "USD"),
@@ -58,6 +58,75 @@ class ForexPairScanner:
         ("USD", "ARS"),
         ("USD", "CLP"),
         ("USD", "COP"),
+        ("EUR", "PLN"),
+        ("EUR", "HUF"),
+        ("EUR", "CZK"),
+        ("EUR", "TRY"),
+        ("EUR", "ZAR"),
+        ("EUR", "MXN"),
+        ("EUR", "INR"),
+        ("EUR", "SGD"),
+        ("EUR", "HKD"),
+        ("EUR", "MYR"),
+        ("EUR", "CNY"),
+        ("EUR", "THB"),
+        ("EUR", "IDR"),
+        ("EUR", "PHP"),
+        ("EUR", "KRW"),
+        ("EUR", "BRL"),
+        ("EUR", "AED"),
+        ("EUR", "SAR"),
+        ("EUR", "QAR"),
+        ("GBP", "JPY"),
+        ("GBP", "CHF"),
+        ("GBP", "AUD"),
+        ("GBP", "CAD"),
+        ("GBP", "NZD"),
+        ("GBP", "SGD"),
+        ("GBP", "HKD"),
+        ("GBP", "INR"),
+        ("GBP", "ZAR"),
+        ("GBP", "MXN"),
+        ("AUD", "JPY"),
+        ("AUD", "NZD"),
+        ("AUD", "CAD"),
+        ("AUD", "CHF"),
+        ("AUD", "SGD"),
+        ("AUD", "HKD"),
+        ("AUD", "INR"),
+        ("AUD", "KRW"),
+        ("AUD", "MYR"),
+        ("CAD", "JPY"),
+        ("CAD", "CHF"),
+        ("CAD", "SGD"),
+        ("CAD", "HKD"),
+        ("CAD", "INR"),
+        ("CAD", "KRW"),
+        ("CAD", "MXN"),
+        ("NZD", "JPY"),
+        ("NZD", "CAD"),
+        ("NZD", "CHF"),
+        ("NZD", "SGD"),
+        ("NZD", "HKD"),
+        ("NZD", "INR"),
+        ("CHF", "JPY"),
+        ("SGD", "JPY"),
+        ("SGD", "HKD"),
+        ("SGD", "INR"),
+        ("SGD", "KRW"),
+        ("SGD", "THB"),
+        ("SGD", "IDR"),
+        ("SGD", "PHP"),
+        ("HKD", "JPY"),
+        ("HKD", "INR"),
+        ("HKD", "KRW"),
+        ("INR", "JPY"),
+        ("KRW", "JPY"),
+        ("MXN", "JPY"),
+        ("ZAR", "JPY"),
+    ]
+
+    COMMODITY_PAIRS = [
         ("XAU", "USD"),
         ("XAG", "USD"),
         ("XPT", "USD"),
@@ -90,6 +159,9 @@ class ForexPairScanner:
         ("XPL", "USD"),
         ("XPA", "USD"),
         ("XSI", "USD"),
+    ]
+
+    CRYPTO_PAIRS = [
         ("BTC", "USD"),
         ("ETH", "USD"),
         ("BNB", "USD"),
@@ -130,6 +202,9 @@ class ForexPairScanner:
         ("PEPE", "USD"),
         ("SHIB", "USD"),
         ("BONK", "USD"),
+    ]
+
+    STOCK_PAIRS = [
         ("AAPL", "USD"),
         ("MSFT", "USD"),
         ("GOOGL", "USD"),
@@ -161,6 +236,8 @@ class ForexPairScanner:
         ("AMD", "USD"),
         ("INTC", "USD"),
     ]
+
+    MAJOR_PAIRS = FOREX_PAIRS + COMMODITY_PAIRS + CRYPTO_PAIRS + STOCK_PAIRS
 
     def __init__(
         self,
@@ -244,7 +321,7 @@ class ForexPairScanner:
 
     def top_risk_pairs(self, *, limit: int = 5, force_refresh: bool = False) -> dict[str, object]:
         """Return top daily risk pairs with automatic scan refresh."""
-        safe_limit = max(1, min(limit, 50))
+        safe_limit = max(1, min(limit, 200))
         scan_date = self.ensure_daily_scan(force_refresh=force_refresh)
         rankings = self.audit_store.get_top_risk_pairs(scan_date=scan_date, limit=safe_limit)
         latest_update_utc = None
