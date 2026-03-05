@@ -247,7 +247,7 @@ class GlobalNewsIntelligence:
 
     def _candidate_models(self) -> list[str]:
         """Return prioritized model fallbacks for broader account compatibility."""
-        candidates = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        candidates = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.0-flash"]
         unique: list[str] = []
         for candidate in candidates:
             cleaned = candidate.strip()

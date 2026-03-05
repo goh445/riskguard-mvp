@@ -200,6 +200,60 @@ def asset_icon_url(asset_code: str) -> str | None:
     return None
 
 
+def build_ai_summary_and_strategy(pair: str, result: dict[str, object]) -> tuple[str, list[str]]:
+    """Build AI-style summary and strategy guidance from risk output."""
+    debug = result.get("debug", {}) if isinstance(result.get("debug", {}), dict) else {}
+    score = int(result.get("score", 0))
+    status = str(result.get("status", "Unknown"))
+
+    sentiment = float(debug.get("news_sentiment", 0.0) or 0.0)
+    macro_stress = float(debug.get("macro_stress", 0.0) or 0.0)
+    volatility = float(debug.get("observed_volatility", 0.0) or 0.0)
+    spread_bps = float(debug.get("spread_bps", 0.0) or 0.0)
+    gemini_status = str(debug.get("gemini_status", "unknown"))
+    news_source = str(debug.get("news_source", "unknown"))
+    category = pair_category(pair)
+
+    if score >= 75:
+        regime = "high-risk regime"
+    elif score >= 45:
+        regime = "elevated-risk regime"
+    else:
+        regime = "controlled-risk regime"
+
+    summary = (
+        f"AI summary for {pair} ({category}): current score is {score} ({status}), indicating a {regime}. "
+        f"Macro/news pressure is {macro_stress:.2f} with sentiment at {sentiment:.2f}; market microstructure shows "
+        f"volatility {volatility:.4f} and spread {spread_bps:.2f} bps. "
+        f"News intelligence source is {news_source}, Gemini status is {gemini_status}."
+    )
+
+    strategies: list[str] = []
+    if score >= 75:
+        strategies.append("Reduce position size and avoid aggressive entries until risk score cools below 70.")
+        strategies.append("Use tighter stop-loss and hedge with negatively correlated major assets.")
+        strategies.append("Prioritize short holding windows and event-driven risk checks each session.")
+    elif score >= 45:
+        strategies.append("Trade selectively with smaller leverage and staggered entries.")
+        strategies.append("Use conditional orders around key technical levels and macro release windows.")
+        strategies.append("Rebalance exposure if spread or volatility expands further.")
+    else:
+        strategies.append("Maintain baseline strategy with normal risk limits and periodic monitoring.")
+        strategies.append("Scale in gradually rather than all-at-once to preserve execution quality.")
+        strategies.append("Keep fallback exits ready in case regime shifts after major news.")
+
+    if category == "Stock":
+        strategies.append("For stocks, align entries with earnings calendar and sector rotation signals.")
+    elif category == "Crypto":
+        strategies.append("For crypto, prioritize liquidity venues and avoid oversized overnight risk.")
+    elif category == "Commodity":
+        strategies.append("For commodities, track inventory and energy/macro headlines before position adds.")
+    else:
+        strategies.append("For FX, monitor central-bank commentary and relative rate expectations.")
+
+    return summary, strategies
+
+
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
 st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
 st.caption(f"Latest UI refresh (UTC): {datetime.now(ZoneInfo('UTC')).isoformat(timespec='seconds')}")
@@ -416,7 +470,6 @@ with tab_analyze:
                 "Timestamp (ISO8601, Malaysia TZ)",
                 value=datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
             )
-            st.caption("No manual AI switch needed. Auto-tuning always runs in backend.")
 
         submitted = st.form_submit_button("Analyze Forex Risk")
 
@@ -472,6 +525,16 @@ with tab_analyze:
                 f"Gemini status: {debug_payload.get('gemini_status', 'unknown')} | "
                 f"Reason: {debug_payload.get('gemini_reason', 'unknown')}"
             )
+
+            summary_text, strategy_points = build_ai_summary_and_strategy(
+                pair=f"{base_currency.upper()}/{quote_currency.upper()}",
+                result=result,
+            )
+            st.markdown("### AI Summary")
+            st.write(summary_text)
+            st.markdown("### Investment Strategy")
+            for strategy_item in strategy_points:
+                st.write(f"- {strategy_item}")
 
             info_col_1, info_col_2 = st.columns(2)
             with info_col_1:
