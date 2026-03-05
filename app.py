@@ -911,6 +911,37 @@ with tab_analyze:
                 "Tail-risk model: ES(95) captures extreme downside tail; EWMA emphasizes recent volatility regime shifts."
             )
 
+            radar_categories = [
+                "Volatility",
+                "Tail Loss (ES95)",
+                "Liquidity Stress",
+                "Contagion Path",
+                "AML Chain",
+            ]
+            volatility_score = max(0.0, min(100.0, ewma_vol * 3000))
+            tail_loss_score = max(0.0, min(100.0, expected_shortfall_95 * 5000))
+            liquidity_score = max(0.0, min(100.0, float(debug_payload.get("spread_bps", 0.0) or 0.0) * 2.5))
+            contagion_score = max(0.0, min(100.0, float(debug_payload.get("path_risk", 0.0) or 0.0) * 65))
+            aml_score = max(0.0, min(100.0, hidden_link_count * 25))
+            radar_values = [
+                volatility_score,
+                tail_loss_score,
+                liquidity_score,
+                contagion_score,
+                aml_score,
+            ]
+
+            radar_fig = px.line_polar(
+                r=radar_values + [radar_values[0]],
+                theta=radar_categories + [radar_categories[0]],
+                line_close=True,
+                range_r=[0, 100],
+                title="Risk Radar (Normalized 0-100)",
+            )
+            radar_fig.update_traces(fill="toself")
+            radar_fig.update_layout(height=360, showlegend=False)
+            st.plotly_chart(radar_fig, use_container_width=True)
+
             summary_text, strategy_points, summary_source = build_ai_summary_and_strategy(
                 pair=f"{base_currency.upper()}/{quote_currency.upper()}",
                 result=result,
