@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -50,8 +51,8 @@ class RiskResponse(BaseModel):
 class ForexRiskRequest(BaseModel):
     """Input payload for forex market network risk analysis."""
 
-    base_currency: str = Field(..., min_length=3, max_length=3)
-    quote_currency: str = Field(..., min_length=3, max_length=3)
+    base_currency: str = Field(..., min_length=1, max_length=10)
+    quote_currency: str = Field(..., min_length=1, max_length=10)
     observed_volatility: float | None = Field(default=None, ge=0)
     spread_bps: float | None = Field(default=None, ge=0)
     timestamp: datetime
@@ -61,8 +62,8 @@ class ForexRiskRequest(BaseModel):
     @classmethod
     def normalize_currency_code(cls, value: str) -> str:
         normalized = value.strip().upper()
-        if len(normalized) != 3 or not normalized.isalpha():
-            raise ValueError("currency must be a 3-letter ISO code")
+        if not re.fullmatch(r"[A-Z0-9.-]{1,10}", normalized):
+            raise ValueError("asset code must be 1-10 chars [A-Z0-9.-]")
         return normalized
 
     @field_validator("timestamp")

@@ -87,9 +87,41 @@ class ForexMarketDataClient:
         "GRT": "the-graph",
         "SNX": "synthetix-network-token",
         "KAS": "kaspa",
-        "PEP": "pepe",
-        "SHB": "shiba-inu",
-        "BON": "bonk",
+        "PEPE": "pepe",
+        "SHIB": "shiba-inu",
+        "BONK": "bonk",
+    }
+    STOCK_TICKERS = {
+        "AAPL": "AAPL",
+        "MSFT": "MSFT",
+        "GOOGL": "GOOGL",
+        "AMZN": "AMZN",
+        "NVDA": "NVDA",
+        "META": "META",
+        "TSLA": "TSLA",
+        "JPM": "JPM",
+        "V": "V",
+        "MA": "MA",
+        "UNH": "UNH",
+        "HD": "HD",
+        "PG": "PG",
+        "XOM": "XOM",
+        "JNJ": "JNJ",
+        "LLY": "LLY",
+        "COST": "COST",
+        "AVGO": "AVGO",
+        "KO": "KO",
+        "PEP": "PEP",
+        "MRK": "MRK",
+        "ABBV": "ABBV",
+        "BAC": "BAC",
+        "WMT": "WMT",
+        "ORCL": "ORCL",
+        "ADBE": "ADBE",
+        "NFLX": "NFLX",
+        "CRM": "CRM",
+        "AMD": "AMD",
+        "INTC": "INTC",
     }
 
     @staticmethod
@@ -213,8 +245,45 @@ class ForexMarketDataClient:
         except requests.RequestException:
             return self._fallback_snapshot(reason="crypto_market_data_unavailable")
 
+    def _fetch_stock_snapshot(self, base: str, quote: str) -> dict[str, Any]:
+        stock_code = base if base in self.STOCK_TICKERS else quote
+        ticker = self.STOCK_TICKERS[stock_code]
+
+        if {base, quote} != {stock_code, "USD"}:
+            return self._fallback_snapshot(reason="unsupported_stock_cross")
+
+        try:
+            response = requests.get(self.YAHOO_CHART_URL.format(ticker=ticker), timeout=12)
+            response.raise_for_status()
+            payload = response.json()
+            result = payload.get("chart", {}).get("result", [])
+            if not result:
+                return self._fallback_snapshot(reason="stock_data_missing")
+
+            timestamps = result[0].get("timestamp", [])
+            closes = result[0].get("indicators", {}).get("quote", [{}])[0].get("close", [])
+            series = [float(value) for value in closes if isinstance(value, (int, float)) and value > 0]
+
+            if base == "USD" and quote == stock_code:
+                series = [1.0 / value for value in series if value > 0]
+
+            last_market_timestamp = None
+            if timestamps:
+                last_market_timestamp = datetime.fromtimestamp(int(timestamps[-1]), tz=timezone.utc).isoformat()
+
+            return self._snapshot_from_series(
+                series,
+                source=f"yahoo_stock:{ticker}",
+                last_market_timestamp=last_market_timestamp,
+            )
+        except requests.RequestException:
+            return self._fallback_snapshot(reason="stock_market_data_unavailable")
+
     def fetch_snapshot(self, base: str, quote: str) -> dict[str, Any]:
         """Return derived volatility and spread proxy from recent daily rates."""
+        if base in self.STOCK_TICKERS or quote in self.STOCK_TICKERS:
+            return self._fetch_stock_snapshot(base, quote)
+
         if base in self.COMMODITY_TICKERS or quote in self.COMMODITY_TICKERS:
             return self._fetch_commodity_snapshot(base, quote)
 
