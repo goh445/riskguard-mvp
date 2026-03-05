@@ -213,6 +213,208 @@ def asset_icon_url(asset_code: str) -> str | None:
     return None
 
 
+def _yahoo_search_symbol(query: str) -> dict[str, object] | None:
+    """Find best Yahoo Finance match for a symbol/name query."""
+    try:
+        response = requests.get(
+            "https://query2.finance.yahoo.com/v1/finance/search",
+            params={"q": query, "quotesCount": 8, "newsCount": 0},
+            timeout=6,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        quotes = payload.get("quotes", [])
+        if not isinstance(quotes, list):
+            return None
+
+        exact = [item for item in quotes if str(item.get("symbol", "")).upper() == query.upper()]
+        preferred = exact or quotes
+        best = next((item for item in preferred if item.get("quoteType") in {"EQUITY", "ETF", "CRYPTOCURRENCY"}), None)
+        if best:
+            return best
+        return preferred[0] if preferred else None
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+
+
+def _yahoo_trend_text(symbol: str) -> str | None:
+    """Get simple 1-month trend text from Yahoo chart."""
+    try:
+        response = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            params={"range": "1mo", "interval": "1d"},
+            timeout=6,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        result = payload.get("chart", {}).get("result", [])
+        if not result:
+            return None
+        closes = result[0].get("indicators", {}).get("quote", [{}])[0].get("close", [])
+        valid_closes = [float(value) for value in closes if value is not None]
+        if len(valid_closes) < 2:
+            return None
+        first_close = valid_closes[0]
+        last_close = valid_closes[-1]
+        if first_close <= 0:
+            return None
+        pct = ((last_close - first_close) / first_close) * 100
+        direction = "uptrend" if pct >= 0 else "downtrend"
+        return f"1M price trend: {direction}, {pct:+.2f}%"
+    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+        return None
+
+
+def _coingecko_search_symbol(query: str) -> dict[str, object] | None:
+    """Find best CoinGecko match for crypto symbol/name."""
+    try:
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/search",
+            params={"query": query},
+            timeout=6,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        coins = payload.get("coins", [])
+        if not isinstance(coins, list) or not coins:
+            return None
+
+        exact = [item for item in coins if str(item.get("symbol", "")).upper() == query.upper()]
+        return (exact[0] if exact else coins[0])
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+
+
+def _coingecko_trend_text(coin_id: str) -> str | None:
+    """Get 24h trend text for a CoinGecko asset."""
+    try:
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={
+                "ids": coin_id,
+                "vs_currencies": "usd",
+                "include_24hr_change": "true",
+            },
+            timeout=6,
+        )
+        response.raise_for_status()
+        payload = response.json().get(coin_id, {})
+        change_24h = payload.get("usd_24h_change")
+        if change_24h is None:
+            return None
+        direction = "uptrend" if float(change_24h) >= 0 else "downtrend"
+        return f"24h price trend: {direction}, {float(change_24h):+.2f}%"
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+
+
+def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
+    """Resolve best-effort asset identity/background/trend for AI summary context."""
+    base = base_code.upper().strip()
+    quote = quote_code.upper().strip()
+
+    commodity_names = {
+        "XAU": "Gold", "XAG": "Silver", "XPT": "Platinum", "XPD": "Palladium", "XBR": "Brent Crude",
+        "XWT": "WTI Crude", "XNG": "Natural Gas", "XCU": "Copper", "XWH": "Wheat", "XCN": "Corn",
+        "XKC": "Coffee", "XSO": "Soybean",
+    }
+
+    if base in STOCK_BASES:
+        symbol = base
+        trend = _yahoo_trend_text(symbol) or "Recent trend unavailable"
+        return {
+            "detected_category": "Stock",
+            "asset_name": symbol,
+            "resolved_symbol": symbol,
+            "background": "This is an equity ticker representing a listed company stock.",
+            "trend": trend,
+            "resolution_source": "builtin:stock",
+        }
+
+    if base in COMMODITY_BASES:
+        symbol = base
+        mapped_name = commodity_names.get(base, base)
+        trend = _yahoo_trend_text(f"{base}=F") or "Recent trend unavailable"
+        return {
+            "detected_category": "Commodity",
+            "asset_name": mapped_name,
+            "resolved_symbol": symbol,
+            "background": "This is a commodity market instrument, typically driven by supply-demand, inventory, and macro factors.",
+            "trend": trend,
+            "resolution_source": "builtin:commodity",
+        }
+
+    if base in CRYPTO_BASES:
+        trend = _yahoo_trend_text(f"{base}-USD") or "Recent trend unavailable"
+        return {
+            "detected_category": "Crypto",
+            "asset_name": base,
+            "resolved_symbol": base,
+            "background": "This is a cryptocurrency asset traded continuously with sentiment and liquidity sensitivity.",
+            "trend": trend,
+            "resolution_source": "builtin:crypto",
+        }
+
+    if base in FOREX_FLAG_CODES and quote in FOREX_FLAG_CODES:
+        return {
+            "detected_category": "Forex",
+            "asset_name": f"{base}/{quote}",
+            "resolved_symbol": f"{base}/{quote}",
+            "background": "This is a foreign-exchange pair representing relative value between two fiat currencies.",
+            "trend": "FX trend context is derived from live rate and volatility signals.",
+            "resolution_source": "builtin:forex",
+        }
+
+    yahoo_match = _yahoo_search_symbol(base)
+    if yahoo_match:
+        quote_type = str(yahoo_match.get("quoteType", "")).upper()
+        resolved_symbol = str(yahoo_match.get("symbol", base)).upper()
+        shortname = str(yahoo_match.get("shortname", resolved_symbol))
+        longname = str(yahoo_match.get("longname", shortname))
+        trend = _yahoo_trend_text(resolved_symbol) or "Recent trend unavailable"
+        if quote_type in {"EQUITY", "ETF"}:
+            category = "Stock"
+            background = f"{longname} is a publicly traded company/instrument represented by ticker {resolved_symbol}."
+        elif quote_type == "CRYPTOCURRENCY":
+            category = "Crypto"
+            background = f"{longname} is a crypto asset represented by symbol {resolved_symbol}."
+        else:
+            category = "Forex"
+            background = f"{longname} is the closest market instrument match for input symbol {base}."
+        return {
+            "detected_category": category,
+            "asset_name": longname,
+            "resolved_symbol": resolved_symbol,
+            "background": background,
+            "trend": trend,
+            "resolution_source": "yahoo_search",
+        }
+
+    coin_match = _coingecko_search_symbol(base)
+    if coin_match:
+        coin_id = str(coin_match.get("id", ""))
+        coin_name = str(coin_match.get("name", base))
+        coin_symbol = str(coin_match.get("symbol", base)).upper()
+        trend = _coingecko_trend_text(coin_id) or "Recent trend unavailable"
+        return {
+            "detected_category": "Crypto",
+            "asset_name": coin_name,
+            "resolved_symbol": coin_symbol,
+            "background": f"{coin_name} is the closest crypto match for input symbol {base}.",
+            "trend": trend,
+            "resolution_source": "coingecko_search",
+        }
+
+    return {
+        "detected_category": pair_category(f"{base}/{quote}"),
+        "asset_name": base,
+        "resolved_symbol": base,
+        "background": f"No exact market match found online; using {base} as provided input for risk interpretation.",
+        "trend": "Recent trend unavailable",
+        "resolution_source": "fallback:input",
+    }
+
+
 def _extract_json_object(text: str) -> str | None:
     """Extract first JSON object from model output."""
     match = re.search(r"\{[\s\S]*\}", text)
@@ -311,6 +513,7 @@ def build_ai_summary_and_strategy(
     result: dict[str, object],
     gemini_api_key: str,
     gemini_model: str,
+    asset_profile: dict[str, str] | None = None,
 ) -> tuple[str, list[str], str]:
     """Generate complete AI summary and strategy via Gemini, fallback when unavailable."""
     debug = result.get("debug", {}) if isinstance(result.get("debug", {}), dict) else {}
@@ -318,6 +521,8 @@ def build_ai_summary_and_strategy(
     status = str(result.get("status", "Unknown"))
     category = pair_category(pair)
     base, quote = pair.split("/") if "/" in pair else (pair, "USD")
+    resolved_profile = asset_profile or resolve_asset_profile(base, quote)
+    resolved_category = resolved_profile.get("detected_category", category)
 
     if not gemini_api_key:
         summary, strategy = _build_fallback_summary_and_strategy(pair, result)
@@ -325,9 +530,10 @@ def build_ai_summary_and_strategy(
 
     context = {
         "pair": pair,
-        "category": category,
+        "category": resolved_category,
         "base": base,
         "quote": quote,
+        "asset_profile": resolved_profile,
         "score": score,
         "status": status,
         "debug": {
@@ -348,7 +554,9 @@ def build_ai_summary_and_strategy(
         "JSON格式必须是: "
         '{"summary":"...","investment_strategy":["...","...","...","...","..."]}. '
         "要求: "
-        "1) summary必须是完整自然语言段落，不要固定前缀，先解释用户所选资产类别（Forex/Commodity/Crypto/Stock）是什么，"
+        "1) summary必须是完整自然语言段落，不要固定前缀，必须先讲清楚这个asset具体是什么；"
+        "若为股票，必须包含公司背景和近期走势；若为商品/加密/外汇，也必须分别说明该资产本质与近期走势；"
+        "若用户输入的symbol不在内置库，必须依据asset_profile中的解析结果说明最可能对应的资产；"
         "再解释当前风险状态与核心驱动；"
         "2) investment_strategy至少5条，且必须包含：进场时机、仓位管理、止损/止盈、加减仓条件、失效退出条件；"
         "3) 内容要具体、务实、可执行。"
@@ -673,11 +881,23 @@ with tab_analyze:
                 f"Reason: {debug_payload.get('gemini_reason', 'unknown')}"
             )
 
+            resolved_profile = resolve_asset_profile(
+                base_code=base_currency,
+                quote_code=quote_currency,
+            )
+            st.caption(
+                "Asset resolver: "
+                f"{resolved_profile.get('detected_category', 'unknown')} | "
+                f"{resolved_profile.get('asset_name', base_currency.upper())} | "
+                f"source={resolved_profile.get('resolution_source', 'unknown')}"
+            )
+
             summary_text, strategy_points, summary_source = build_ai_summary_and_strategy(
                 pair=f"{base_currency.upper()}/{quote_currency.upper()}",
                 result=result,
                 gemini_api_key=UI_GEMINI_API_KEY,
                 gemini_model=UI_GEMINI_MODEL,
+                asset_profile=resolved_profile,
             )
             st.markdown("### AI Summary")
             st.write(summary_text)
