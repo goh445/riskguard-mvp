@@ -65,6 +65,23 @@ Then open:
 - Frontend UI: `http://127.0.0.1:8501`
 - Backend docs: `http://127.0.0.1:8000/docs`
 
+## Streamlit Cloud Frontend Chunk Error (TypeError: Failed to fetch dynamically imported module)
+
+If Streamlit Cloud shows an error like:
+
+`TypeError: Failed to fetch dynamically imported module: https://<app>.streamlit.app/~/+/static/js/index.<hash>.js`
+
+Root cause is usually frontend static chunk mismatch (old browser-cached bundle vs newly deployed bundle), amplified on older Streamlit versions.
+
+Fix applied in this project:
+
+- Upgraded Streamlit from `1.41.1` to `1.54.0` in `requirements.txt`.
+
+Operational recovery steps after deploy:
+
+- Hard refresh browser (`Ctrl+F5`) or open in private window.
+- If still failing, Streamlit Cloud app settings -> `Reboot app`.
+
 ## Procfile-like Start Command
 
 Use this command for process managers:

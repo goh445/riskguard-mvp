@@ -2,7 +2,7 @@ fastapi==0.115.8
 uvicorn[standard]==0.34.0
 pandas==2.2.3
 scikit-learn==1.6.1
-streamlit==1.41.1
+streamlit==1.54.0
 altair==5.5.0
 plotly==6.0.0
 faker==36.1.1
