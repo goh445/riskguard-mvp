@@ -892,6 +892,25 @@ with tab_analyze:
                 f"source={resolved_profile.get('resolution_source', 'unknown')}"
             )
 
+            st.markdown("### Quant Risk Metrics (ES / EWMA / AML)")
+            historical_vol = float(debug_payload.get("historical_volatility", 0.0) or 0.0)
+            ewma_vol = float(debug_payload.get("ewma_volatility", 0.0) or 0.0)
+            ewma_scale = float(debug_payload.get("ewma_scale", 1.0) or 1.0)
+            expected_shortfall_95 = float(debug_payload.get("expected_shortfall_95", 0.0) or 0.0)
+            path_count = int(debug_payload.get("path_count_considered", 0) or 0)
+            hidden_link_count = len(result.get("hidden_links", []))
+
+            q_col_1, q_col_2, q_col_3, q_col_4, q_col_5 = st.columns(5)
+            q_col_1.metric("EWMA Volatility", f"{ewma_vol:.4f}")
+            q_col_2.metric("Historical Vol", f"{historical_vol:.4f}")
+            q_col_3.metric("EWMA Scale", f"{ewma_scale:.2f}x")
+            q_col_4.metric("Expected Shortfall 95", f"{expected_shortfall_95:.4f}")
+            q_col_5.metric("AML Hidden Paths", hidden_link_count, f"considered {path_count}")
+
+            st.caption(
+                "Tail-risk model: ES(95) captures extreme downside tail; EWMA emphasizes recent volatility regime shifts."
+            )
+
             summary_text, strategy_points, summary_source = build_ai_summary_and_strategy(
                 pair=f"{base_currency.upper()}/{quote_currency.upper()}",
                 result=result,
@@ -937,6 +956,9 @@ with tab_analyze:
                     "market_source": debug_payload.get("market_data_source"),
                     "news_source": debug_payload.get("news_source"),
                     "headlines": debug_payload.get("news_sample_size", 0),
+                    "ewma_volatility": debug_payload.get("ewma_volatility"),
+                    "expected_shortfall_95": debug_payload.get("expected_shortfall_95"),
+                    "aml_hidden_paths": len(result.get("hidden_links", [])),
                     "auto_tuning": True,
                     "gemini": bool(debug_payload.get("gemini_enabled")),
                 }
@@ -968,6 +990,9 @@ with tab_history:
                 "market_source",
                 "news_source",
                 "headlines",
+                "ewma_volatility",
+                "expected_shortfall_95",
+                "aml_hidden_paths",
                 "auto_tuning",
                 "gemini",
             ],
