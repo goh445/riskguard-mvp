@@ -80,6 +80,16 @@ class ForexMarketDataClient:
         "TON": "toncoin",
         "ATM": "cosmos",
         "INJ": "injective-protocol",
+        "XMR": "monero",
+        "AAV": "aave",
+        "MKR": "maker",
+        "RND": "render-token",
+        "GRT": "the-graph",
+        "SNX": "synthetix-network-token",
+        "KAS": "kaspa",
+        "PEP": "pepe",
+        "SHB": "shiba-inu",
+        "BON": "bonk",
     }
 
     @staticmethod

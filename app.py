@@ -26,6 +26,24 @@ CRYPTO_BASES = {
     "SUI", "TON", "ATM", "INJ",
 }
 
+FOREX_FLAG_CODES = {
+    "USD": "us", "EUR": "eu", "JPY": "jp", "GBP": "gb", "CHF": "ch", "AUD": "au", "NZD": "nz",
+    "CAD": "ca", "CNY": "cn", "SGD": "sg", "MYR": "my", "SEK": "se", "NOK": "no", "INR": "in",
+    "KRW": "kr", "BRL": "br", "MXN": "mx", "ZAR": "za", "HKD": "hk", "TRY": "tr", "THB": "th",
+    "IDR": "id", "PHP": "ph", "VND": "vn", "PLN": "pl", "HUF": "hu", "CZK": "cz", "AED": "ae",
+    "SAR": "sa", "QAR": "qa", "ILS": "il", "DKK": "dk", "TWD": "tw", "ARS": "ar", "CLP": "cl",
+    "COP": "co",
+}
+
+CRYPTO_ICON_CODES = {
+    "BTC": "btc", "ETH": "eth", "SOL": "sol", "BNB": "bnb", "XRP": "xrp", "ADA": "ada", "DOG": "doge",
+    "DOT": "dot", "LTC": "ltc", "TRX": "trx", "BCH": "bch", "UNI": "uni", "LNK": "link", "XLM": "xlm",
+    "AVA": "avax", "MTA": "matic", "ICP": "icp", "ETC": "etc", "EOS": "eos", "ALG": "algo", "VET": "vet",
+    "FIL": "fil", "APT": "apt", "ARB": "arb", "OPM": "op", "NEA": "near", "SUI": "sui", "TON": "ton",
+    "ATM": "atom", "INJ": "inj", "XMR": "xmr", "AAV": "aave", "MKR": "mkr", "RND": "rndr", "GRT": "grt",
+    "SNX": "snx", "KAS": "kas", "PEP": "pepe", "SHB": "shib", "BON": "bonk",
+}
+
 ASSET_ICONS = {
     "USD": "💵", "EUR": "💶", "JPY": "💴", "GBP": "💷", "CHF": "🇨🇭", "AUD": "🇦🇺", "NZD": "🇳🇿",
     "CAD": "🇨🇦", "CNY": "🇨🇳", "SGD": "🇸🇬", "MYR": "🇲🇾", "SEK": "🇸🇪", "NOK": "🇳🇴", "INR": "🇮🇳",
@@ -137,6 +155,17 @@ def asset_icon(asset_code: str) -> str:
     return ASSET_ICONS.get(asset_code.upper(), "💠")
 
 
+def asset_icon_url(asset_code: str) -> str | None:
+    """Return URL icon for forex/crypto assets; fallback to None."""
+    code = asset_code.upper()
+    if code in FOREX_FLAG_CODES:
+        return f"https://flagcdn.com/w40/{FOREX_FLAG_CODES[code]}.png"
+    if code in CRYPTO_ICON_CODES:
+        symbol = CRYPTO_ICON_CODES[code]
+        return f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/{symbol}.png"
+    return None
+
+
 def decorate_pair(pair: str) -> str:
     """Render pair with icons for improved UX."""
     try:
@@ -199,8 +228,11 @@ with tab_board:
         rows = []
         for row in rankings:
             pair = str(row.get("pair", ""))
+            base, quote = pair.split("/") if "/" in pair else (pair, "")
             rows.append(
                 {
+                    "base_icon": asset_icon_url(base),
+                    "quote_icon": asset_icon_url(quote),
                     "category": pair_category(pair),
                     "asset": decorate_pair(pair),
                     "pair": pair,
@@ -236,7 +268,16 @@ with tab_board:
         c3.metric("Commodity", commodity_count)
         c4.metric("Crypto", crypto_count)
 
-        st.dataframe(filtered_rows, use_container_width=True)
+        visible_rows = filtered_rows[:15]
+        st.caption(f"Showing top {len(visible_rows)} assets in current filter")
+        st.dataframe(
+            visible_rows,
+            use_container_width=True,
+            column_config={
+                "base_icon": st.column_config.ImageColumn("Base"),
+                "quote_icon": st.column_config.ImageColumn("Quote"),
+            },
+        )
     else:
         st.info("No rankings available yet.")
 
@@ -284,6 +325,16 @@ with tab_analyze:
                     "TRX/USD",
                     "UNI/USD",
                     "SUI/USD",
+                    "XMR/USD",
+                    "AAV/USD",
+                    "MKR/USD",
+                    "RND/USD",
+                    "GRT/USD",
+                    "SNX/USD",
+                    "KAS/USD",
+                    "PEP/USD",
+                    "SHB/USD",
+                    "BON/USD",
                     "Custom",
                 ],
                 index=0,

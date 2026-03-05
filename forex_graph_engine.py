@@ -264,6 +264,12 @@ class ForexGraphRiskEngine:
         commodity_shock = float(metadata.get("commodity_shock", 0.0))
         systemic_contagion = float(metadata.get("systemic_contagion", 0.0))
         fraud_pressure_index = float(metadata.get("fraud_pressure_index", 0.0))
+        active_feed_count = int(metadata.get("active_feed_count", 0) or 0)
+        successful_feed_count = int(metadata.get("successful_feed_count", 0) or 0)
+        news_reliability = (
+            successful_feed_count / active_feed_count if active_feed_count > 0 else 1.0
+        )
+        news_weight = max(0.45, min(1.0, 0.45 + 0.55 * news_reliability))
         if sentiment < -0.25 or macro_stress > 0.6:
             flags.append("macro_sentiment_stress")
             reasons.append("Macro/news signals suggest elevated directional stress")
@@ -288,17 +294,22 @@ class ForexGraphRiskEngine:
 
         score = 0.0
         score += min(observed_volatility * 2200, 35)
-        score += min(spread_bps * 0.8, 20)
-        score += min(path_risk * 45, 20)
-        score += min((base_centrality + quote_centrality) * 20, 15)
-        score += max(0.0, min((-sentiment * 20) + (macro_stress * 10), 15))
-        score += min(policy_uncertainty * 8, 8)
-        score += min(geopolitical_risk * 8, 8)
-        score += min(liquidity_risk * 7, 7)
-        score += min(commodity_shock * 7, 7)
-        score += min(systemic_contagion * 10, 10)
-        score += min(fraud_pressure_index * 10, 10)
+        score += min(spread_bps * 0.65, 16)
+        score += min(path_risk * 38, 16)
+        score += min((base_centrality + quote_centrality) * 14, 10)
+        score += max(0.0, min(((-sentiment * 18) + (macro_stress * 8)) * news_weight, 14))
+        score += min(policy_uncertainty * 7 * news_weight, 7)
+        score += min(geopolitical_risk * 7 * news_weight, 7)
+        score += min(liquidity_risk * 6 * news_weight, 6)
+        score += min(commodity_shock * 6 * news_weight, 6)
+        score += min(systemic_contagion * 8 * news_weight, 8)
+        score += min(fraud_pressure_index * 8 * news_weight, 8)
+        if observed_volatility < 0.006 and spread_bps < 12:
+            score -= 6
+        elif observed_volatility < 0.008 and spread_bps < 16:
+            score -= 3
         score = min(100.0, score)
+        score = max(0.0, score)
 
         debug: dict[str, Any] = {
             "base_centrality": round(base_centrality, 3),
@@ -319,6 +330,8 @@ class ForexGraphRiskEngine:
             "market_data_source": metadata.get("market_data_source", "manual_or_unknown"),
             "market_data_fetched_at_utc": metadata.get("market_data_fetched_at_utc"),
             "market_last_timestamp": metadata.get("market_last_timestamp"),
+            "news_reliability": round(news_reliability, 3),
+            "news_weight": round(news_weight, 3),
             "news_source": metadata.get("news_source", "unknown"),
             "news_sample_size": metadata.get("news_sample_size", 0),
             "active_feed_count": metadata.get("active_feed_count", 0),

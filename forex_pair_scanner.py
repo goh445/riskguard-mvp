@@ -120,6 +120,16 @@ class ForexPairScanner:
         ("TON", "USD"),
         ("ATM", "USD"),
         ("INJ", "USD"),
+        ("XMR", "USD"),
+        ("AAV", "USD"),
+        ("MKR", "USD"),
+        ("RND", "USD"),
+        ("GRT", "USD"),
+        ("SNX", "USD"),
+        ("KAS", "USD"),
+        ("PEP", "USD"),
+        ("SHB", "USD"),
+        ("BON", "USD"),
     ]
 
     def __init__(
