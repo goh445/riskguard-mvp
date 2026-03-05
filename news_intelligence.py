@@ -83,7 +83,7 @@ class GlobalNewsIntelligence:
         cache_ttl_seconds: int = 600,
         use_gemini_news: bool = False,
         gemini_api_key: str = "",
-        gemini_model: str = "gemini-1.5-flash",
+        gemini_model: str = "gemini-2.5-flash",
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.cache_ttl_seconds = cache_ttl_seconds

@@ -22,6 +22,32 @@ class ForexMarketDataClient:
         "XPD": "PA=F",  # Palladium
         "XBR": "BZ=F",  # Brent crude
         "XWT": "CL=F",  # WTI crude
+        "XCU": "HG=F",  # Copper
+        "XNG": "NG=F",  # Natural gas
+        "XRB": "RB=F",  # Gasoline
+        "XHO": "HO=F",  # Heating oil
+        "XKC": "KC=F",  # Coffee
+        "XSU": "SB=F",  # Sugar
+        "XCC": "CC=F",  # Cocoa
+        "XCT": "CT=F",  # Cotton
+        "XOJ": "OJ=F",  # Orange juice
+        "XWH": "ZW=F",  # Wheat
+        "XCN": "ZC=F",  # Corn
+        "XSO": "ZS=F",  # Soybeans
+        "XSM": "ZM=F",  # Soybean meal
+        "XSL": "ZL=F",  # Soybean oil
+        "XLE": "LE=F",  # Live cattle
+        "XHE": "HE=F",  # Lean hogs
+        "XFE": "GF=F",  # Feeder cattle
+        "XAL": "ALI=F",  # Aluminum
+        "XPB": "ZR=F",  # Rough rice proxy
+        "XUR": "URA",  # Uranium ETF proxy
+        "XLI": "LIT",  # Lithium ETF proxy
+        "XNI": "JJN",  # Nickel ETN proxy
+        "XZN": "JJU",  # Zinc ETN proxy
+        "XPL": "PPLT",  # Platinum ETF proxy
+        "XPA": "PALL",  # Palladium ETF proxy
+        "XSI": "SLV",  # Silver ETF proxy
     }
     CRYPTO_IDS = {
         "BTC": "bitcoin",
@@ -29,6 +55,31 @@ class ForexMarketDataClient:
         "BNB": "binancecoin",
         "SOL": "solana",
         "XRP": "ripple",
+        "ADA": "cardano",
+        "DOG": "dogecoin",
+        "DOT": "polkadot",
+        "LTC": "litecoin",
+        "TRX": "tron",
+        "BCH": "bitcoin-cash",
+        "UNI": "uniswap",
+        "LNK": "chainlink",
+        "XLM": "stellar",
+        "AVA": "avalanche-2",
+        "MTA": "matic-network",
+        "ICP": "internet-computer",
+        "ETC": "ethereum-classic",
+        "EOS": "eos",
+        "ALG": "algorand",
+        "VET": "vechain",
+        "FIL": "filecoin",
+        "APT": "aptos",
+        "ARB": "arbitrum",
+        "OPM": "optimism",
+        "NEA": "near",
+        "SUI": "sui",
+        "TON": "toncoin",
+        "ATM": "cosmos",
+        "INJ": "injective-protocol",
     }
 
     @staticmethod

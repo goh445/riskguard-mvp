@@ -15,8 +15,35 @@ import streamlit as st
 API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-forex-risk")
 API_KEY = os.getenv("BACKEND_API_KEY", "")
 
-COMMODITY_BASES = {"XAU", "XAG", "XPT", "XPD", "XBR", "XWT"}
-CRYPTO_BASES = {"BTC", "ETH", "SOL", "BNB", "XRP"}
+COMMODITY_BASES = {
+    "XAU", "XAG", "XPT", "XPD", "XBR", "XWT", "XCU", "XNG", "XRB", "XHO", "XKC", "XSU", "XCC",
+    "XCT", "XOJ", "XWH", "XCN", "XSO", "XSM", "XSL", "XLE", "XHE", "XFE", "XAL", "XPB", "XUR",
+    "XLI", "XNI", "XZN", "XPL", "XPA", "XSI",
+}
+CRYPTO_BASES = {
+    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOG", "DOT", "LTC", "TRX", "BCH", "UNI", "LNK",
+    "XLM", "AVA", "MTA", "ICP", "ETC", "EOS", "ALG", "VET", "FIL", "APT", "ARB", "OPM", "NEA",
+    "SUI", "TON", "ATM", "INJ",
+}
+
+ASSET_ICONS = {
+    "USD": "💵", "EUR": "💶", "JPY": "💴", "GBP": "💷", "CHF": "🇨🇭", "AUD": "🇦🇺", "NZD": "🇳🇿",
+    "CAD": "🇨🇦", "CNY": "🇨🇳", "SGD": "🇸🇬", "MYR": "🇲🇾", "SEK": "🇸🇪", "NOK": "🇳🇴", "INR": "🇮🇳",
+    "KRW": "🇰🇷", "BRL": "🇧🇷", "MXN": "🇲🇽", "ZAR": "🇿🇦", "HKD": "🇭🇰", "TRY": "🇹🇷", "THB": "🇹🇭",
+    "IDR": "🇮🇩", "PHP": "🇵🇭", "VND": "🇻🇳", "PLN": "🇵🇱", "HUF": "🇭🇺", "CZK": "🇨🇿", "AED": "🇦🇪",
+    "SAR": "🇸🇦", "QAR": "🇶🇦", "ILS": "🇮🇱", "DKK": "🇩🇰", "TWD": "🇹🇼", "ARS": "🇦🇷", "CLP": "🇨🇱",
+    "COP": "🇨🇴",
+    "XAU": "🥇", "XAG": "🥈", "XPT": "⚙️", "XPD": "🧪", "XBR": "🛢️", "XWT": "🛢️", "XCU": "🧲",
+    "XNG": "🔥", "XRB": "⛽", "XHO": "🛢️", "XKC": "☕", "XSU": "🍬", "XCC": "🍫", "XCT": "🧵",
+    "XOJ": "🍊", "XWH": "🌾", "XCN": "🌽", "XSO": "🫘", "XSM": "🌱", "XSL": "🫒", "XLE": "🐄",
+    "XHE": "🐖", "XFE": "🐂", "XAL": "🔩", "XPB": "🍚", "XUR": "☢️", "XLI": "🔋", "XNI": "🪙",
+    "XZN": "⚙️", "XPL": "⚙️", "XPA": "🧪", "XSI": "🥈",
+    "BTC": "₿", "ETH": "◇", "SOL": "🟣", "BNB": "🟡", "XRP": "✕", "ADA": "🟦", "DOG": "🐕",
+    "DOT": "🔴", "LTC": "Ł", "TRX": "🔺", "BCH": "🟢", "UNI": "🦄", "LNK": "🔗", "XLM": "✨",
+    "AVA": "🅰️", "MTA": "🟪", "ICP": "♾️", "ETC": "🪨", "EOS": "◼️", "ALG": "🅰", "VET": "✅",
+    "FIL": "📁", "APT": "🟤", "ARB": "🔷", "OPM": "🔴", "NEA": "🌌", "SUI": "💧", "TON": "🔵",
+    "ATM": "⚛️", "INJ": "💠",
+}
 
 
 def normalize_analyze_url(api_url: str) -> str:
@@ -105,6 +132,20 @@ def pair_category(pair: str) -> str:
     return "Forex"
 
 
+def asset_icon(asset_code: str) -> str:
+    """Return icon for one asset code."""
+    return ASSET_ICONS.get(asset_code.upper(), "💠")
+
+
+def decorate_pair(pair: str) -> str:
+    """Render pair with icons for improved UX."""
+    try:
+        base, quote = pair.upper().split("/")
+    except ValueError:
+        return pair
+    return f"{asset_icon(base)}{asset_icon(quote)} {base}/{quote}"
+
+
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
 st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
 st.caption(f"Latest UI refresh (UTC): {datetime.now(ZoneInfo('UTC')).isoformat(timespec='seconds')}")
@@ -114,6 +155,8 @@ if "forex_history" not in st.session_state:
     st.session_state.forex_history = []
 if "leaderboard_cache" not in st.session_state:
     st.session_state.leaderboard_cache = None
+if "asset_filter" not in st.session_state:
+    st.session_state.asset_filter = "All"
 
 with st.sidebar:
     st.header("API Settings")
@@ -127,7 +170,6 @@ with st.sidebar:
         st.success(f"Backend OK: {health_url}")
     else:
         st.warning(f"Backend unreachable: {health_url}")
-    board_limit = st.slider("Board asset count", min_value=10, max_value=50, value=50, step=2)
     auto_refresh = st.toggle("Auto refresh leaderboard", value=False)
     refresh_seconds = st.slider("Refresh interval (sec)", min_value=15, max_value=120, value=30, step=5)
 
@@ -144,7 +186,7 @@ with tab_board:
                 st.session_state.leaderboard_cache = call_top_pairs_api(
                     api_url=normalized_api_url,
                     api_key=api_key,
-                    limit=board_limit,
+                    limit=50,
                 )
         except requests.RequestException as exc:
             st.error(f"Failed to fetch leaderboard: {exc}")
@@ -160,6 +202,7 @@ with tab_board:
             rows.append(
                 {
                     "category": pair_category(pair),
+                    "asset": decorate_pair(pair),
                     "pair": pair,
                     "score": row.get("score"),
                     "status": row.get("status"),
@@ -167,17 +210,33 @@ with tab_board:
                 }
             )
 
-        total_count = len(rows)
-        forex_count = sum(1 for row in rows if row["category"] == "Forex")
-        commodity_count = sum(1 for row in rows if row["category"] == "Commodity")
-        crypto_count = sum(1 for row in rows if row["category"] == "Crypto")
+        filter_col_1, filter_col_2, filter_col_3, filter_col_4 = st.columns(4)
+        if filter_col_1.button("All", use_container_width=True):
+            st.session_state.asset_filter = "All"
+        if filter_col_2.button("Forex", use_container_width=True):
+            st.session_state.asset_filter = "Forex"
+        if filter_col_3.button("Commodity", use_container_width=True):
+            st.session_state.asset_filter = "Commodity"
+        if filter_col_4.button("Crypto", use_container_width=True):
+            st.session_state.asset_filter = "Crypto"
+
+        filtered_rows = (
+            rows
+            if st.session_state.asset_filter == "All"
+            else [row for row in rows if row["category"] == st.session_state.asset_filter]
+        )
+
+        total_count = len(filtered_rows)
+        forex_count = sum(1 for row in filtered_rows if row["category"] == "Forex")
+        commodity_count = sum(1 for row in filtered_rows if row["category"] == "Commodity")
+        crypto_count = sum(1 for row in filtered_rows if row["category"] == "Crypto")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Assets Shown", total_count)
+        c1.metric("Assets Shown", total_count, st.session_state.asset_filter)
         c2.metric("Forex", forex_count)
         c3.metric("Commodity", commodity_count)
         c4.metric("Crypto", crypto_count)
 
-        st.dataframe(rows, use_container_width=True)
+        st.dataframe(filtered_rows, use_container_width=True)
     else:
         st.info("No rankings available yet.")
 
@@ -208,11 +267,23 @@ with tab_analyze:
                     "XPD/USD",
                     "XBR/USD",
                     "XWT/USD",
+                    "XCU/USD",
+                    "XNG/USD",
+                    "XKC/USD",
+                    "XWH/USD",
+                    "XCN/USD",
+                    "XSO/USD",
                     "BTC/USD",
                     "ETH/USD",
                     "SOL/USD",
                     "BNB/USD",
                     "XRP/USD",
+                    "ADA/USD",
+                    "DOT/USD",
+                    "LTC/USD",
+                    "TRX/USD",
+                    "UNI/USD",
+                    "SUI/USD",
                     "Custom",
                 ],
                 index=0,
@@ -259,7 +330,7 @@ with tab_analyze:
             headline_1, headline_2, headline_3 = st.columns(3)
             headline_1.metric("Risk Score", f"{result['score']}")
             headline_2.metric("Risk Status", result["status"])
-            headline_3.metric("Pair", f"{base_currency.upper()}/{quote_currency.upper()}")
+            headline_3.metric("Pair", decorate_pair(f"{base_currency.upper()}/{quote_currency.upper()}"))
 
             debug_payload = result.get("debug", {})
             ai_col_1, ai_col_2, ai_col_3 = st.columns(3)

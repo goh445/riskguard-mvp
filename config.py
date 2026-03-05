@@ -77,7 +77,7 @@ class Settings:
         if os.getenv("USE_GEMINI_NEWS") is not None
         else bool(gemini_api_key)
     )
-    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 
 settings = Settings()
