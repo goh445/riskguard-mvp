@@ -330,16 +330,57 @@ class ForexGraphRiskEngine:
 
         path_risk = 0.0
         path_nodes: list[str] = []
+        path_count_considered = 0
         if request.base_currency in self.graph and request.quote_currency in self.graph:
             if nx.has_path(self.graph, request.base_currency, request.quote_currency):
-                path_nodes = nx.shortest_path(self.graph, request.base_currency, request.quote_currency)
-                if len(path_nodes) >= 3:
-                    flags.append("hidden_link")
-                    hidden_links.append(" -> ".join(path_nodes))
-                    reasons.append("Indirect transmission path found through intermediary currencies")
+                candidate_paths: list[tuple[float, float, list[str]]] = []
+                for idx, one_path in enumerate(
+                    nx.all_simple_paths(self.graph, request.base_currency, request.quote_currency, cutoff=4)
+                ):
+                    path_edges = list(zip(one_path[:-1], one_path[1:]))
+                    edge_sum = sum(self.graph[left][right]["contagion_weight"] for left, right in path_edges)
+                    edge_avg = edge_sum / max(1, len(path_edges))
+                    candidate_paths.append((edge_avg, edge_sum, one_path))
+                    if idx >= 11:
+                        break
 
-                path_edges = list(zip(path_nodes[:-1], path_nodes[1:]))
-                path_risk = sum(self.graph[left][right]["contagion_weight"] for left, right in path_edges)
+                path_count_considered = len(candidate_paths)
+                if candidate_paths:
+                    candidate_paths.sort(key=lambda item: (item[0], item[1]), reverse=True)
+                    best_avg, best_sum, best_path = candidate_paths[0]
+                    path_nodes = best_path
+                    path_risk = best_sum
+
+                    aml_paths = []
+                    intermediary_frequency: dict[str, int] = {}
+                    for avg_weight, total_weight, selected_path in candidate_paths[:3]:
+                        if len(selected_path) >= 3:
+                            aml_paths.append(
+                                f"{' -> '.join(selected_path)} | aml_path_avg={avg_weight:.3f} | aml_path_sum={total_weight:.3f}"
+                            )
+                            for intermediary in selected_path[1:-1]:
+                                intermediary_frequency[intermediary] = intermediary_frequency.get(intermediary, 0) + 1
+
+                    hidden_links.extend(aml_paths)
+                    if len(best_path) >= 3:
+                        flags.append("hidden_link")
+                        reasons.append("Indirect transmission path found through intermediary assets")
+
+                    repeated_intermediaries = [
+                        node for node, count in intermediary_frequency.items() if count >= 2
+                    ]
+                    if repeated_intermediaries:
+                        flags.append("aml_indirect_chain")
+                        reasons.append(
+                            "Multiple indirect contagion routes share intermediary nodes, indicating AML-style chain risk"
+                        )
+                        hidden_links.append(
+                            "shared_intermediaries=" + ",".join(sorted(repeated_intermediaries)[:5])
+                        )
+
+                    if path_count_considered >= 3 and best_avg >= 0.27:
+                        flags.append("multi_path_contagion")
+                        reasons.append("Several high-weight indirect paths increase cross-asset contagion intensity")
 
         metadata = request.metadata or {}
         sentiment = float(metadata.get("news_sentiment", 0.0))
@@ -350,6 +391,11 @@ class ForexGraphRiskEngine:
         commodity_shock = float(metadata.get("commodity_shock", 0.0))
         systemic_contagion = float(metadata.get("systemic_contagion", 0.0))
         fraud_pressure_index = float(metadata.get("fraud_pressure_index", 0.0))
+        expected_shortfall_95 = float(metadata.get("expected_shortfall_95", 0.0) or 0.0)
+        ewma_volatility = float(metadata.get("ewma_volatility", observed_volatility) or observed_volatility)
+        historical_volatility = float(metadata.get("historical_volatility", observed_volatility) or observed_volatility)
+        ewma_scale = ewma_volatility / observed_volatility if observed_volatility > 0 else 1.0
+        ewma_scale = max(0.85, min(1.45, ewma_scale))
         active_feed_count = int(metadata.get("active_feed_count", 0) or 0)
         successful_feed_count = int(metadata.get("successful_feed_count", 0) or 0)
         news_reliability = (
@@ -377,9 +423,12 @@ class ForexGraphRiskEngine:
         if fraud_pressure_index > 0.55:
             flags.append("fraud_pressure_index")
             reasons.append("Fraud pressure index suggests elevated manipulation or dislocation risk")
+        if expected_shortfall_95 > 0.012:
+            flags.append("tail_loss_stress")
+            reasons.append("Expected Shortfall indicates elevated tail-loss exposure under stressed moves")
 
         score = 0.0
-        score += min(observed_volatility * 2200, 35)
+        score += min(observed_volatility * ewma_scale * 2200, 35)
         score += min(spread_bps * 0.65, 16)
         score += min(path_risk * 38, 16)
         score += min((base_centrality + quote_centrality) * 14, 10)
@@ -390,6 +439,7 @@ class ForexGraphRiskEngine:
         score += min(commodity_shock * 6 * news_weight, 6)
         score += min(systemic_contagion * 8 * news_weight, 8)
         score += min(fraud_pressure_index * 8 * news_weight, 8)
+        score += min(expected_shortfall_95 * 450, 8)
         if observed_volatility < 0.006 and spread_bps < 12:
             score -= 6
         elif observed_volatility < 0.008 and spread_bps < 16:
@@ -402,6 +452,7 @@ class ForexGraphRiskEngine:
             "quote_centrality": round(quote_centrality, 3),
             "path_nodes": path_nodes,
             "path_risk": round(path_risk, 3),
+            "path_count_considered": path_count_considered,
             "sentiment": sentiment,
             "news_sentiment": sentiment,
             "macro_stress": macro_stress,
@@ -412,6 +463,10 @@ class ForexGraphRiskEngine:
             "systemic_contagion": systemic_contagion,
             "fraud_pressure_index": fraud_pressure_index,
             "observed_volatility": round(observed_volatility, 6),
+            "historical_volatility": round(historical_volatility, 6),
+            "ewma_volatility": round(ewma_volatility, 6),
+            "ewma_scale": round(ewma_scale, 3),
+            "expected_shortfall_95": round(expected_shortfall_95, 6),
             "spread_bps": round(spread_bps, 2),
             "market_data_source": metadata.get("market_data_source", "manual_or_unknown"),
             "market_data_fetched_at_utc": metadata.get("market_data_fetched_at_utc"),

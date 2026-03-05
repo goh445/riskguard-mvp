@@ -164,16 +164,60 @@ class ForexMarketDataClient:
             current = series[idx]
             returns.append((current - prev) / prev)
 
-        volatility = max(0.0005, float(pstdev(returns)))
-        spread_proxy_bps = max(1.0, min(40.0, float(mean(abs(x) for x in returns) * 10000 * 0.6)))
-        return self._build_snapshot(
-            observed_volatility=volatility,
+        historical_volatility = max(0.0005, float(pstdev(returns)))
+        ewma_volatility = self._ewma_volatility(returns)
+        expected_shortfall_95 = self._expected_shortfall(returns, confidence=0.95)
+        blended_volatility = max(0.0005, min(0.08, 0.45 * historical_volatility + 0.55 * ewma_volatility))
+
+        volatility_scale = ewma_volatility / historical_volatility if historical_volatility > 0 else 1.0
+        volatility_scale = max(0.75, min(1.4, volatility_scale))
+        spread_proxy_bps = max(
+            1.0,
+            min(40.0, float(mean(abs(x) for x in returns) * 10000 * 0.6 * volatility_scale)),
+        )
+
+        snapshot = self._build_snapshot(
+            observed_volatility=blended_volatility,
             spread_bps=spread_proxy_bps,
             sample_size=len(series),
             last_rate=series[-1],
             source=source,
             last_market_timestamp=last_market_timestamp,
         )
+        snapshot.update(
+            {
+                "historical_volatility": round(historical_volatility, 6),
+                "ewma_volatility": round(ewma_volatility, 6),
+                "expected_shortfall_95": round(expected_shortfall_95, 6),
+                "ewma_lambda": 0.94,
+            }
+        )
+        return snapshot
+
+    @staticmethod
+    def _ewma_volatility(returns: list[float], lam: float = 0.94) -> float:
+        """Estimate volatility with RiskMetrics-style EWMA."""
+        if not returns:
+            return 0.0005
+        variance = float(returns[0] ** 2)
+        for value in returns[1:]:
+            variance = lam * variance + (1.0 - lam) * float(value**2)
+        return max(0.0005, variance**0.5)
+
+    @staticmethod
+    def _expected_shortfall(returns: list[float], confidence: float = 0.95) -> float:
+        """Estimate downside Expected Shortfall at a confidence level."""
+        if not returns:
+            return 0.0
+        losses = sorted(max(0.0, -float(value)) for value in returns)
+        if not losses:
+            return 0.0
+        idx = int(confidence * (len(losses) - 1))
+        var_threshold = losses[idx]
+        tail = [loss for loss in losses if loss >= var_threshold]
+        if not tail:
+            return float(var_threshold)
+        return float(mean(tail))
 
     def _fetch_commodity_snapshot(self, base: str, quote: str) -> dict[str, Any]:
         commodity_code = base if base in self.COMMODITY_TICKERS else quote

@@ -61,6 +61,46 @@ class RiskEngine:
         self.ml_model.fit(features)
         logger.info("IsolationForest model trained for optional anomaly debug")
 
+    def _tail_risk_profile(self, user_id: str) -> dict[str, float | int | str]:
+        """Estimate amount-tail risk using VaR/Expected Shortfall from existing history."""
+        if self.history_df.empty:
+            return {
+                "tail_profile_source": "none",
+                "tail_sample_size": 0,
+                "var_95_amount": 0.0,
+                "expected_shortfall_95_amount": 0.0,
+            }
+
+        user_amounts = (
+            self.history_df.loc[self.history_df["user_id"] == user_id, "amount"]
+            .dropna()
+            .astype(float)
+        )
+        if len(user_amounts) >= 20:
+            sample = user_amounts
+            source = "user_history"
+        else:
+            sample = self.history_df["amount"].dropna().astype(float)
+            source = "global_history"
+
+        if len(sample) < 20:
+            return {
+                "tail_profile_source": "insufficient_history",
+                "tail_sample_size": int(len(sample)),
+                "var_95_amount": 0.0,
+                "expected_shortfall_95_amount": 0.0,
+            }
+
+        var_95 = float(sample.quantile(0.95))
+        tail = sample[sample >= var_95]
+        es_95 = float(tail.mean()) if not tail.empty else var_95
+        return {
+            "tail_profile_source": source,
+            "tail_sample_size": int(len(sample)),
+            "var_95_amount": round(var_95, 2),
+            "expected_shortfall_95_amount": round(es_95, 2),
+        }
+
     def _evaluate_rules(self, request: TransactionRequest) -> RuleEvaluation:
         tx_ts = normalize_timestamp(request.timestamp)
         flags: list[str] = []
@@ -109,12 +149,28 @@ class RiskEngine:
                 f"Transaction amount {request.amount:.2f} exceeds {settings.high_value_multiplier:.1f}x user average {avg_amount:.2f}"
             )
 
+        tail_profile = self._tail_risk_profile(request.user_id)
+        var_95_amount = float(tail_profile.get("var_95_amount", 0.0) or 0.0)
+        es_95_amount = float(tail_profile.get("expected_shortfall_95_amount", 0.0) or 0.0)
+        if es_95_amount > 0 and request.amount >= es_95_amount:
+            reasons.append(
+                "Transaction amount enters 95% Expected Shortfall tail zone (extreme-loss bucket)"
+            )
+        elif var_95_amount > 0 and request.amount >= var_95_amount:
+            reasons.append(
+                "Transaction amount exceeds 95% VaR threshold and is approaching tail-loss zone"
+            )
+
         debug: dict[str, Any] = {
             "velocity_count": velocity_count,
             "velocity_threshold": settings.velocity_threshold_count,
             "location_unique_cities_last_hour": sorted(unique_cities),
             "user_avg_amount": round(avg_amount, 2),
             "high_value_threshold": round(high_value_threshold, 2),
+            "tail_profile_source": tail_profile.get("tail_profile_source"),
+            "tail_sample_size": tail_profile.get("tail_sample_size"),
+            "var_95_amount": var_95_amount,
+            "expected_shortfall_95_amount": es_95_amount,
         }
 
         if self.ml_model is not None:

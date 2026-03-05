@@ -219,6 +219,10 @@ def analyze_forex_risk(
         "market_last_rate": metrics["last_rate"],
         "market_last_timestamp": metrics.get("last_market_timestamp"),
         "market_data_fetched_at_utc": metrics.get("fetched_at_utc"),
+        "historical_volatility": metrics.get("historical_volatility"),
+        "ewma_volatility": metrics.get("ewma_volatility"),
+        "expected_shortfall_95": metrics.get("expected_shortfall_95"),
+        "ewma_lambda": metrics.get("ewma_lambda"),
         "auto_parameter_tuning": True,
     }
 
