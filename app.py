@@ -149,7 +149,7 @@ def call_analyze_api(api_url: str, payload: dict[str, object], api_key: str) -> 
 
 
 def call_top_pairs_api(api_url: str, api_key: str, limit: int = 10) -> dict[str, object]:
-    """Fetch daily top-risk forex pairs from ops endpoint with retries."""
+    """Fetch top-risk pairs with timeout-tolerant retries and degraded fallback."""
     normalized = normalize_analyze_url(api_url)
     base_url = normalized
     for suffix in ["/analyze-forex-risk", "/analyze-transaction"]:
@@ -157,18 +157,27 @@ def call_top_pairs_api(api_url: str, api_key: str, limit: int = 10) -> dict[str,
             base_url = base_url[: -len(suffix)]
             break
 
-    endpoint = f"{base_url}/ops/top-risk-pairs?limit={limit}"
     headers = {"X-API-Key": api_key} if api_key else None
     last_exception: Exception | None = None
-    for attempt in range(1, 4):
+
+    request_plan = [
+        (limit, (10, 90)),
+        (min(limit, 100), (10, 75)),
+        (min(limit, 50), (10, 60)),
+    ]
+
+    for planned_limit, timeout_value in request_plan:
+        endpoint = f"{base_url}/ops/top-risk-pairs?limit={planned_limit}&force_refresh=false"
         try:
-            response = requests.get(endpoint, headers=headers, timeout=(8, 45))
+            response = requests.get(endpoint, headers=headers, timeout=timeout_value)
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            payload["requested_limit"] = planned_limit
+            return payload
         except requests.RequestException as exc:
             last_exception = exc
-            if attempt < 3:
-                time.sleep(2)
+            time.sleep(1)
+
     raise requests.RequestException(
         f"Failed after 3 attempts. Last error: {last_exception}"
     ) from last_exception
@@ -438,6 +447,8 @@ with tab_board:
     board = st.session_state.leaderboard_cache or {}
     st.caption(f"Scan date: {board.get('scan_date')}")
     st.caption(f"Latest leaderboard update (UTC): {board.get('latest_update_utc')}")
+    if board.get("requested_limit") and int(board.get("requested_limit", 0)) < 200:
+        st.caption(f"Leaderboard fallback mode: loaded with limit={board.get('requested_limit')} to avoid timeout.")
     rankings = board.get("rankings", [])
     if rankings:
         rows = []
