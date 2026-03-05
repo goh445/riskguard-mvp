@@ -1,0 +1,11 @@
+#!/bin/sh
+
+branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+if [ -z "$branch_name" ] || [ "$branch_name" = "HEAD" ]; then
+  exit 0
+fi
+
+if git remote get-url origin >/dev/null 2>&1; then
+  git push origin "$branch_name"
+fi
