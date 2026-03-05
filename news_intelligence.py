@@ -176,62 +176,126 @@ class GlobalNewsIntelligence:
             self._last_gemini_reason = "No headlines available"
             return baseline
 
+        compact_headlines = self._compact_headlines(headlines, max_items=20, max_chars=140)
+        if not compact_headlines:
+            self._last_gemini_status = "skipped"
+            self._last_gemini_reason = "No valid headlines after compaction"
+            return baseline
+
         prompt = (
             "You are a market risk analyst. Based on these recent global headlines, return JSON only with keys: "
             "news_sentiment (-1 to 1), macro_stress (0 to 1), policy_uncertainty (0 to 1), "
             "geopolitical_risk (0 to 1), liquidity_risk (0 to 1), commodity_shock (0 to 1), "
             "systemic_contagion (0 to 1), fraud_pressure_index (0 to 1). "
             "No markdown, no explanation.\n\nHeadlines:\n"
-            + "\n".join(f"- {headline}" for headline in headlines[:35])
-        )
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.gemini_model}:generateContent"
-            f"?key={self.gemini_api_key}"
+            + "\n".join(f"- {headline}" for headline in compact_headlines)
         )
         body = {"contents": [{"parts": [{"text": prompt}]}]}
 
-        try:
-            response = requests.post(url, json=body, timeout=10)
-            response.raise_for_status()
-            payload = response.json()
-            raw_text = (
-                payload.get("candidates", [{}])[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
-            )
-            extracted = self._extract_json_object(raw_text)
-            if not extracted:
-                return baseline
+        failure_reasons: list[str] = []
+        for model_name in self._candidate_models():
+            for url, headers in self._gemini_endpoints(model_name=model_name):
+                try:
+                    response = requests.post(url, json=body, headers=headers, timeout=15)
+                    response.raise_for_status()
+                    payload = response.json()
+                    raw_text = self._extract_candidate_text(payload)
+                    extracted = self._extract_json_object(raw_text)
+                    if not extracted:
+                        failure_reasons.append(f"model={model_name} no_json")
+                        continue
 
-            model_signals = json.loads(extracted)
-            merged = dict(baseline)
-            for key in [
-                "news_sentiment",
-                "macro_stress",
-                "policy_uncertainty",
-                "geopolitical_risk",
-                "liquidity_risk",
-                "commodity_shock",
-                "systemic_contagion",
-                "fraud_pressure_index",
-            ]:
-                if key in model_signals:
-                    value = float(model_signals[key])
-                    if key == "news_sentiment":
-                        merged[key] = round(max(-1.0, min(1.0, value)), 3)
-                    else:
-                        merged[key] = round(max(0.0, min(1.0, value)), 3)
+                    model_signals = json.loads(extracted)
+                    merged = dict(baseline)
+                    for key in [
+                        "news_sentiment",
+                        "macro_stress",
+                        "policy_uncertainty",
+                        "geopolitical_risk",
+                        "liquidity_risk",
+                        "commodity_shock",
+                        "systemic_contagion",
+                        "fraud_pressure_index",
+                    ]:
+                        if key in model_signals:
+                            value = float(model_signals[key])
+                            if key == "news_sentiment":
+                                merged[key] = round(max(-1.0, min(1.0, value)), 3)
+                            else:
+                                merged[key] = round(max(0.0, min(1.0, value)), 3)
 
-            merged["news_source"] = f"{baseline.get('news_source', 'rss')}+gemini"
-            merged["news_updated_at_utc"] = datetime.now(timezone.utc).isoformat()
-            self._last_gemini_status = "enabled"
-            self._last_gemini_reason = "Gemini refinement applied"
-            return merged
-        except (requests.RequestException, ValueError, json.JSONDecodeError, KeyError, TypeError):
-            self._last_gemini_status = "error"
+                    merged["news_source"] = f"{baseline.get('news_source', 'rss')}+gemini"
+                    merged["news_updated_at_utc"] = datetime.now(timezone.utc).isoformat()
+                    self._last_gemini_status = "enabled"
+                    self._last_gemini_reason = f"Gemini refinement applied via {model_name}"
+                    return merged
+                except requests.HTTPError as exc:
+                    status_code = exc.response.status_code if exc.response is not None else "unknown"
+                    body_preview = ""
+                    if exc.response is not None and exc.response.text:
+                        body_preview = re.sub(r"\s+", " ", exc.response.text)[:180]
+                    failure_reasons.append(f"model={model_name} http={status_code} {body_preview}".strip())
+                except (requests.RequestException, ValueError, json.JSONDecodeError, KeyError, TypeError) as exc:
+                    failure_reasons.append(f"model={model_name} {type(exc).__name__}")
+
+        self._last_gemini_status = "error"
+        if failure_reasons:
+            self._last_gemini_reason = f"Gemini failed: {' | '.join(failure_reasons[:2])}"[:320]
+        else:
             self._last_gemini_reason = "Gemini request failed; fallback to deterministic signals"
-            return baseline
+        return baseline
+
+    def _candidate_models(self) -> list[str]:
+        """Return prioritized model fallbacks for broader account compatibility."""
+        candidates = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        unique: list[str] = []
+        for candidate in candidates:
+            cleaned = candidate.strip()
+            if cleaned and cleaned not in unique:
+                unique.append(cleaned)
+        return unique
+
+    def _gemini_endpoints(self, model_name: str) -> list[tuple[str, dict[str, str] | None]]:
+        """Return endpoint variants for Gemini API compatibility across versions."""
+        return [
+            (
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                f"?key={self.gemini_api_key}",
+                None,
+            ),
+            (
+                f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent",
+                {"x-goog-api-key": self.gemini_api_key},
+            ),
+        ]
+
+    @staticmethod
+    def _extract_candidate_text(payload: dict[str, Any]) -> str:
+        """Extract response text from Gemini payload variants."""
+        candidates = payload.get("candidates", [])
+        if not candidates:
+            return ""
+        parts = candidates[0].get("content", {}).get("parts", [])
+        texts = [part.get("text", "") for part in parts if isinstance(part, dict)]
+        return "\n".join(text for text in texts if text)
+
+    @staticmethod
+    def _compact_headlines(headlines: list[str], max_items: int, max_chars: int) -> list[str]:
+        """Trim and deduplicate headlines for stable prompt size."""
+        compact: list[str] = []
+        seen: set[str] = set()
+        for headline in headlines:
+            text = headline.strip()
+            if not text:
+                continue
+            normalized = text.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            compact.append(text[:max_chars])
+            if len(compact) >= max_items:
+                break
+        return compact
 
     @staticmethod
     def _extract_json_object(text: str) -> str | None:
