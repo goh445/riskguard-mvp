@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 import os
+import re
 import time
 from zoneinfo import ZoneInfo
 
@@ -14,6 +16,8 @@ import streamlit as st
 
 API_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/analyze-forex-risk")
 API_KEY = os.getenv("BACKEND_API_KEY", "")
+UI_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
+UI_GEMINI_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-2.5-flash")
 
 COMMODITY_BASES = {
     "XAU", "XAG", "XPT", "XPD", "XBR", "XWT", "XCU", "XNG", "XRB", "XHO", "XKC", "XSU", "XCC",
@@ -200,11 +204,20 @@ def asset_icon_url(asset_code: str) -> str | None:
     return None
 
 
-def build_ai_summary_and_strategy(pair: str, result: dict[str, object]) -> tuple[str, list[str]]:
-    """Build AI-style summary and strategy guidance from risk output."""
+def _extract_json_object(text: str) -> str | None:
+    """Extract first JSON object from model output."""
+    match = re.search(r"\{[\s\S]*\}", text)
+    if not match:
+        return None
+    return match.group(0)
+
+
+def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object]) -> tuple[str, list[str]]:
+    """Fallback summary and strategy when LLM generation is unavailable."""
     debug = result.get("debug", {}) if isinstance(result.get("debug", {}), dict) else {}
     score = int(result.get("score", 0))
     status = str(result.get("status", "Unknown"))
+    base, quote = pair.split("/") if "/" in pair else (pair, "USD")
 
     sentiment = float(debug.get("news_sentiment", 0.0) or 0.0)
     macro_stress = float(debug.get("macro_stress", 0.0) or 0.0)
@@ -221,37 +234,160 @@ def build_ai_summary_and_strategy(pair: str, result: dict[str, object]) -> tuple
     else:
         regime = "controlled-risk regime"
 
+    category_explanation = {
+        "Forex": (
+            "Forex means one currency priced against another (base/quote). "
+            "Your selected pair shows how many quote-currency units are needed for 1 unit of the base currency."
+        ),
+        "Commodity": (
+            "Commodity pairs track real-world raw materials (like gold, oil, gas, metals, or crops), "
+            "usually quoted versus USD."
+        ),
+        "Crypto": (
+            "Crypto pairs represent digital assets traded against a quote currency, with higher 24/7 volatility "
+            "and stronger sentiment-driven moves."
+        ),
+        "Stock": (
+            "Stock pairs represent listed company shares benchmarked versus USD in this risk model, "
+            "so equity news and earnings events are key drivers."
+        ),
+    }
+
     summary = (
-        f"AI summary for {pair} ({category}): current score is {score} ({status}), indicating a {regime}. "
-        f"Macro/news pressure is {macro_stress:.2f} with sentiment at {sentiment:.2f}; market microstructure shows "
-        f"volatility {volatility:.4f} and spread {spread_bps:.2f} bps. "
-        f"News intelligence source is {news_source}, Gemini status is {gemini_status}."
+        f"你当前选择的是 {pair}（{category}），即 {base}/{quote}。{category_explanation.get(category, '')} "
+        f"当前风险评分为 {score}（{status}），处于 {regime}。"
+        f"宏观与新闻压力为 {macro_stress:.2f}，新闻情绪为 {sentiment:.2f}，"
+        f"市场微观结构显示波动率 {volatility:.4f}、点差 {spread_bps:.2f} bps。"
+        f"新闻来源为 {news_source}，Gemini 状态为 {gemini_status}。"
     )
 
     strategies: list[str] = []
     if score >= 75:
-        strategies.append("Reduce position size and avoid aggressive entries until risk score cools below 70.")
-        strategies.append("Use tighter stop-loss and hedge with negatively correlated major assets.")
-        strategies.append("Prioritize short holding windows and event-driven risk checks each session.")
+        strategies.append("Regime plan: defensive mode; reduce position size and avoid aggressive entries until score cools below 70.")
+        strategies.append("Entry timing: wait for post-news stabilization (at least one full candle close after major release) and narrowing spread before entry.")
+        strategies.append("Execution rule: avoid entries when spread is expanding rapidly; prefer limit/conditional orders near validated support-resistance retests.")
+        strategies.append("Risk control: use tighter stop-loss (recent swing-based) and partial take-profit on first favorable impulse.")
+        strategies.append("Invalidation: exit quickly if volatility spikes again and price closes beyond your invalidation level.")
     elif score >= 45:
-        strategies.append("Trade selectively with smaller leverage and staggered entries.")
-        strategies.append("Use conditional orders around key technical levels and macro release windows.")
-        strategies.append("Rebalance exposure if spread or volatility expands further.")
+        strategies.append("Regime plan: selective mode with smaller leverage and staggered entries.")
+        strategies.append("Entry timing: prioritize pullback/retest entries after trend confirmation, not initial breakout chase.")
+        strategies.append("Execution rule: place conditional orders around key levels and avoid opening new trades right before high-impact events.")
+        strategies.append("Risk control: scale in with 2-3 tranches and trail stop once trade reaches initial reward target.")
+        strategies.append("Invalidation: if spread or realized volatility expands materially, reduce exposure immediately.")
     else:
-        strategies.append("Maintain baseline strategy with normal risk limits and periodic monitoring.")
-        strategies.append("Scale in gradually rather than all-at-once to preserve execution quality.")
-        strategies.append("Keep fallback exits ready in case regime shifts after major news.")
+        strategies.append("Regime plan: baseline mode with standard risk limits and periodic monitoring.")
+        strategies.append("Entry timing: enter on planned setup confirmation (breakout-hold or pullback-hold) during liquid session hours.")
+        strategies.append("Execution rule: scale in gradually instead of all-at-once to improve average execution quality.")
+        strategies.append("Risk control: keep pre-defined stop-loss and target levels with minimum reward-to-risk discipline.")
+        strategies.append("Invalidation: close or hedge if a major surprise event shifts the pair into elevated-risk regime.")
 
     if category == "Stock":
-        strategies.append("For stocks, align entries with earnings calendar and sector rotation signals.")
+        strategies.append("Stock-specific timing: avoid fresh entries just before earnings/FOMC; best entries are after volatility settles and direction confirms.")
+        strategies.append("Stock-specific check: validate sector breadth and index trend before adding single-name exposure.")
     elif category == "Crypto":
-        strategies.append("For crypto, prioritize liquidity venues and avoid oversized overnight risk.")
+        strategies.append("Crypto-specific timing: avoid thin-liquidity hours; entries are safer after funding/liquidation stress normalizes.")
+        strategies.append("Crypto-specific check: prioritize deep-liquidity venues and avoid oversized overnight/weekend risk.")
     elif category == "Commodity":
-        strategies.append("For commodities, track inventory and energy/macro headlines before position adds.")
+        strategies.append("Commodity-specific timing: align entries with inventory data windows and major energy/macro headlines.")
+        strategies.append("Commodity-specific check: confirm term-structure/news direction before adding to winners.")
     else:
-        strategies.append("For FX, monitor central-bank commentary and relative rate expectations.")
+        strategies.append("FX-specific timing: avoid entries right into central-bank speeches; favor post-announcement confirmation moves.")
+        strategies.append("FX-specific check: monitor relative rate expectations and DXY trend alignment.")
 
     return summary, strategies
+
+
+def build_ai_summary_and_strategy(
+    pair: str,
+    result: dict[str, object],
+    gemini_api_key: str,
+    gemini_model: str,
+) -> tuple[str, list[str], str]:
+    """Generate complete AI summary and strategy via Gemini, fallback when unavailable."""
+    debug = result.get("debug", {}) if isinstance(result.get("debug", {}), dict) else {}
+    score = int(result.get("score", 0))
+    status = str(result.get("status", "Unknown"))
+    category = pair_category(pair)
+    base, quote = pair.split("/") if "/" in pair else (pair, "USD")
+
+    if not gemini_api_key:
+        summary, strategy = _build_fallback_summary_and_strategy(pair, result)
+        return summary, strategy, "fallback:no_api_key"
+
+    context = {
+        "pair": pair,
+        "category": category,
+        "base": base,
+        "quote": quote,
+        "score": score,
+        "status": status,
+        "debug": {
+            "news_sentiment": debug.get("news_sentiment", 0.0),
+            "macro_stress": debug.get("macro_stress", 0.0),
+            "observed_volatility": debug.get("observed_volatility", 0.0),
+            "spread_bps": debug.get("spread_bps", 0.0),
+            "news_source": debug.get("news_source", "unknown"),
+            "gemini_status": debug.get("gemini_status", "unknown"),
+            "reasons": result.get("reasons", []),
+            "flags": result.get("flags", []),
+            "hidden_links": result.get("hidden_links", []),
+        },
+    }
+
+    prompt = (
+        "你是专业多资产风险分析师。请仅输出JSON对象，不要Markdown，不要多余解释。"
+        "JSON格式必须是: "
+        '{"summary":"...","investment_strategy":["...","...","...","...","..."]}. '
+        "要求: "
+        "1) summary必须是完整自然语言段落，不要固定前缀，先解释用户所选资产类别（Forex/Commodity/Crypto/Stock）是什么，"
+        "再解释当前风险状态与核心驱动；"
+        "2) investment_strategy至少5条，且必须包含：进场时机、仓位管理、止损/止盈、加减仓条件、失效退出条件；"
+        "3) 内容要具体、务实、可执行。"
+        "\n\n输入数据:\n"
+        + json.dumps(context, ensure_ascii=False)
+    )
+    body = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    endpoints = [
+        (
+            f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent"
+            f"?key={gemini_api_key}",
+            None,
+        ),
+        (
+            f"https://generativelanguage.googleapis.com/v1/models/{gemini_model}:generateContent",
+            {"x-goog-api-key": gemini_api_key},
+        ),
+    ]
+
+    for url, headers in endpoints:
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+            candidates = payload.get("candidates", [])
+            if not candidates:
+                continue
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            raw_text = "\n".join(
+                part.get("text", "") for part in parts if isinstance(part, dict) and part.get("text")
+            )
+            extracted = _extract_json_object(raw_text)
+            if not extracted:
+                continue
+
+            parsed = json.loads(extracted)
+            summary = str(parsed.get("summary", "")).strip()
+            strategy_items = parsed.get("investment_strategy", [])
+            strategies = [str(item).strip() for item in strategy_items if str(item).strip()]
+            if summary and len(strategies) >= 5:
+                return summary, strategies, f"gemini:{gemini_model}"
+        except (requests.RequestException, ValueError, json.JSONDecodeError, KeyError, TypeError):
+            continue
+
+    summary, strategies = _build_fallback_summary_and_strategy(pair, result)
+    return summary, strategies, "fallback:model_error"
 
 
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
@@ -526,15 +662,18 @@ with tab_analyze:
                 f"Reason: {debug_payload.get('gemini_reason', 'unknown')}"
             )
 
-            summary_text, strategy_points = build_ai_summary_and_strategy(
+            summary_text, strategy_points, summary_source = build_ai_summary_and_strategy(
                 pair=f"{base_currency.upper()}/{quote_currency.upper()}",
                 result=result,
+                gemini_api_key=UI_GEMINI_API_KEY,
+                gemini_model=UI_GEMINI_MODEL,
             )
             st.markdown("### AI Summary")
             st.write(summary_text)
             st.markdown("### Investment Strategy")
             for strategy_item in strategy_points:
                 st.write(f"- {strategy_item}")
+            st.caption(f"Summary source: {summary_source}")
 
             info_col_1, info_col_2 = st.columns(2)
             with info_col_1:
