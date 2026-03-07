@@ -858,96 +858,150 @@ with tab_board:
                 "Custom": {
                     "mult": 1.0,
                     "add": 0.0,
+                    "engine_color": "#4B5563",
                     "period": "User-defined",
                     "note": "Manual scenario with no predefined historical shock.",
                     "evidence": "No historical preset applied. Suitable for policy sandbox and bespoke what-if replay.",
                     "calibration_basis": "mult/add are user-neutral defaults; stress depends only on selected intensity.",
                     "transmission_channels": "User-selected channels only; no embedded macro regime assumption.",
+                    "origin_background": "Used when teams need policy simulation for non-standard events (for example sanctions, operational outage, or one-off country shock) that are not represented by a canonical crisis episode.",
+                    "progression": "Analyst defines shock severity using intensity. The engine preserves model baseline and only applies user-intended stress amplitude without adding historical crisis bias.",
+                    "impact": "Impact is scenario-design dependent. Useful for governance rehearsal, playbook testing, and limit-setting dry runs.",
+                    "accuracy_evidence": "Accuracy comes from transparency and controllability rather than historical fit. Outputs are deterministic and auditable against selected mult/add/intensity inputs.",
                 },
                 "2008 Global Financial Crisis": {
                     "mult": 1.4,
                     "add": 12.0,
+                    "engine_color": "#7F1D1D",
                     "period": "2008-2009",
                     "note": "Systemic credit freeze, deleveraging, and severe liquidity contraction.",
                     "evidence": "Global cross-asset volatility jumped to crisis regime and funding spreads widened abruptly.",
                     "calibration_basis": "High multiplier captures regime shift in volatility; additive shock captures liquidity and contagion premium.",
                     "transmission_channels": "Funding stress, forced deleveraging, USD funding squeeze, cross-asset correlation spike.",
+                    "origin_background": "US subprime losses propagated into global banking stress via securitized credit and interbank exposure. Confidence collapse moved from credit markets into broad cross-asset risk repricing.",
+                    "progression": "Credit deterioration -> interbank trust breakdown -> liquidity hoarding -> forced deleveraging -> synchronized selloff and volatility regime jump.",
+                    "impact": "Typical outcomes include wider spreads, shallower order books, jump risk in defensively crowded assets, and elevated tail-loss persistence.",
+                    "accuracy_evidence": "Stylized facts: crisis-era volatility/spread spikes, cross-asset correlation convergence, and prolonged drawdown clusters. These align with high multiplier + sizable additive stress design.",
                 },
                 "Asian Financial Crisis": {
                     "mult": 1.35,
                     "add": 11.0,
+                    "engine_color": "#991B1B",
                     "period": "1997-1998",
                     "note": "Currency devaluations and funding pressure across emerging Asia.",
                     "evidence": "Large EMFX devaluations, reserve pressure, and regional contagion produced persistent risk premia.",
                     "calibration_basis": "Near-crisis multiplier for volatility clustering plus additive term for funding/liquidity stress spillover.",
                     "transmission_channels": "FX reserve drawdown, debt-refinancing pressure, regional confidence contagion.",
+                    "origin_background": "External debt vulnerability, maturity mismatch, and confidence shock triggered sequential currency pressure across regional markets.",
+                    "progression": "Speculative pressure on pegs -> reserve depletion -> policy regime break -> debt-servicing stress -> regional contagion through capital flight.",
+                    "impact": "High FX gap risk, persistent risk premium, and spillover to rates/equities through balance-sheet stress.",
+                    "accuracy_evidence": "EMFX dislocation patterns and elevated sovereign/credit premia justify high multiplier and meaningful additive term under contagion-led stress replay.",
                 },
                 "Dot-com Bust": {
                     "mult": 1.18,
                     "add": 7.0,
+                    "engine_color": "#9A3412",
                     "period": "2000-2002",
                     "note": "Equity valuation collapse with risk-off spillover into broader assets.",
                     "evidence": "Sustained equity drawdown and risk-aversion rise, but systemic funding stress was milder than 2008.",
                     "calibration_basis": "Moderate multiplier reflects elevated volatility without full systemic freeze; smaller additive term for spillover.",
                     "transmission_channels": "Equity beta repricing, sentiment deterioration, sector concentration unwind.",
+                    "origin_background": "Excessive growth/valuation expectations and concentration in technology names reversed as earnings realism and financing constraints emerged.",
+                    "progression": "Valuation compression -> momentum unwind -> risk appetite contraction -> broader repricing via sentiment channel.",
+                    "impact": "Deep equity drawdown, sector rotation stress, and medium-depth liquidity deterioration instead of full systemic funding freeze.",
+                    "accuracy_evidence": "Historical profile shows prolonged risk-off with lower systemic liquidity shock than 2008, supporting moderate mult/add calibration.",
                 },
                 "Eurozone Sovereign Debt": {
                     "mult": 1.24,
                     "add": 8.0,
+                    "engine_color": "#A16207",
                     "period": "2011-2012",
                     "note": "Sovereign-credit stress and policy uncertainty in Europe.",
                     "evidence": "Peripheral sovereign spreads and redenomination concerns amplified market fragmentation risk.",
                     "calibration_basis": "Medium-high multiplier for persistent volatility and additive term for policy/fragmentation premium.",
                     "transmission_channels": "Sovereign-bank nexus, policy uncertainty, funding fragmentation.",
+                    "origin_background": "Fiscal sustainability concerns in periphery sovereigns fed directly into bank balance-sheet risk and fragmentation of euro-area funding conditions.",
+                    "progression": "Sovereign spread widening -> bank funding stress -> policy uncertainty cycles -> recurrent volatility bursts.",
+                    "impact": "Persistent risk premium, episodic spread blowouts, and high sensitivity to policy headlines and backstop credibility.",
+                    "accuracy_evidence": "Observed persistence of sovereign-risk premium supports elevated multiplier with moderate additive premium for policy-fragmentation channels.",
                 },
                 "CHF Unpeg Shock": {
                     "mult": 1.28,
                     "add": 9.0,
+                    "engine_color": "#0F766E",
                     "period": "2015",
                     "note": "SNB floor removal triggered abrupt FX gap and liquidity vacuum.",
                     "evidence": "Intraday gap moves and sharp execution slippage highlighted jump-risk and temporary liquidity collapse.",
                     "calibration_basis": "Higher multiplier for jump-vol regime and additive term for execution/liquidity shock.",
                     "transmission_channels": "Policy surprise, order-book thinning, stop cascade dynamics.",
+                    "origin_background": "Abrupt removal of the EUR/CHF floor invalidated common positioning assumptions and market-making models in minutes.",
+                    "progression": "Policy surprise -> order-book withdrawal -> stop cascade -> extreme gapping and fill uncertainty.",
+                    "impact": "Execution risk dominates: slippage, gap-through stops, and temporary inability to transact near expected prices.",
+                    "accuracy_evidence": "Event archetype is jump-risk + liquidity vacuum, which is captured better by combining above-normal multiplier with additive execution premium.",
                 },
                 "COVID Liquidity Shock": {
                     "mult": 1.3,
                     "add": 10.0,
+                    "engine_color": "#1D4ED8",
                     "period": "2020",
                     "note": "Cross-asset liquidation wave and temporary market depth collapse.",
                     "evidence": "Global risk assets sold off synchronously; implied vol and funding stress surged during initial shock windows.",
                     "calibration_basis": "High multiplier for synchronized volatility spike and additive term for broad liquidity dislocation.",
                     "transmission_channels": "Cross-asset liquidation, margin calls, liquidity hoarding, correlation convergence.",
+                    "origin_background": "Pandemic shock combined real-economy uncertainty with sudden portfolio de-risking and collateral pressure across markets.",
+                    "progression": "Macro uncertainty surge -> VaR/margin pressure -> indiscriminate liquidation -> liquidity depth collapse and high correlation.",
+                    "impact": "Fast drawdowns, temporary breakdown of diversification, and broad execution-cost stress across asset classes.",
+                    "accuracy_evidence": "Observed synchronized volatility spikes and liquidity dislocations map to high mult/add settings and justify non-linear stress amplification.",
                 },
                 "Global Inflation & Rate Shock": {
                     "mult": 1.17,
                     "add": 6.5,
+                    "engine_color": "#4338CA",
                     "period": "2022-2023",
                     "note": "Synchronized tightening cycle and rapid repricing of rates-sensitive assets.",
                     "evidence": "Fast policy-rate repricing increased term-premium volatility and cross-asset sensitivity to macro prints.",
                     "calibration_basis": "Lower multiplier than crisis events but persistent additive term for repricing and liquidity frictions.",
                     "transmission_channels": "Yield shock transmission, duration repricing, real-rate sensitivity.",
+                    "origin_background": "Inflation persistence forced central banks into rapid tightening, repricing discount rates and risk premia simultaneously.",
+                    "progression": "Inflation surprise persistence -> policy repricing -> yield volatility shock -> valuation reset in rate-sensitive assets.",
+                    "impact": "Persistent repricing pressure, more frequent regime shifts around macro data releases, and tighter risk budgets for duration-linked exposures.",
+                    "accuracy_evidence": "MOVE/rates-vol style behavior and repeated macro-driven repricing justify moderate multiplier with durable additive shock component.",
                 },
                 "Commodity Supply Shock": {
                     "mult": 1.22,
                     "add": 8.0,
+                    "engine_color": "#166534",
                     "period": "Multiple episodes",
                     "note": "Energy/raw-material supply disruptions propagate to inflation and FX terms of trade.",
                     "evidence": "Commodity spikes historically pressure inflation expectations, trade balances, and import-sensitive currencies.",
                     "calibration_basis": "Medium-high multiplier for volatility pass-through and additive term for terms-of-trade/liquidity pressure.",
                     "transmission_channels": "Input-cost shock, inflation expectations, external-balance stress, policy reaction uncertainty.",
+                    "origin_background": "Geopolitical disruptions, logistics bottlenecks, or production constraints tighten commodity supply and alter inflation trajectories.",
+                    "progression": "Supply squeeze -> commodity price spike -> inflation pass-through -> policy uncertainty and FX terms-of-trade repricing.",
+                    "impact": "Importers face wider external-balance pressure; spread and volatility stress rise in commodity-sensitive currencies and sectors.",
+                    "accuracy_evidence": "Historical commodity shock episodes show broad pass-through to inflation/rates/FX risk premia, supporting medium-high mult/add settings.",
                 },
             }
+
+            def _scenario_tooltip_text(entry: dict[str, object]) -> str:
+                return (
+                    f"起因背景: {entry['origin_background']}\n"
+                    f"演化过程: {entry['progression']}\n"
+                    f"市场影响: {entry['impact']}\n"
+                    f"校准依据: {entry['calibration_basis']}\n"
+                    f"传导链路: {entry['transmission_channels']}\n"
+                    f"证据锚点: {entry['accuracy_evidence']}"
+                )
+
+            selected_for_tooltip = st.session_state.get("stress_scenario_selector", "2008 Global Financial Crisis")
+            tooltip_scenario = scenario_map.get(selected_for_tooltip, scenario_map["2008 Global Financial Crisis"])
             sim_col_1, sim_col_2, sim_col_3 = st.columns(3)
             scenario_name = sim_col_1.selectbox(
                 "Scenario",
                 list(scenario_map.keys()),
-                index=0,
-                help=(
-                    "Scenario presets are calibrated from stylized historical stress regimes, not arbitrary values. "
-                    "Each preset combines: (1) multiplier for volatility-regime amplification and "
-                    "(2) additive shock for liquidity/contagion premium. "
-                    "Use this to test resilience under historically grounded macro transmission channels."
-                ),
+                index=list(scenario_map.keys()).index(selected_for_tooltip) if selected_for_tooltip in scenario_map else 1,
+                key="stress_scenario_selector",
+                help=_scenario_tooltip_text(tooltip_scenario),
             )
             scenario_intensity = sim_col_2.slider(
                 "Scenario intensity",
@@ -960,24 +1014,41 @@ with tab_board:
             show_top_n = sim_col_3.slider("Top impacted assets", min_value=5, max_value=30, value=10, step=1)
 
             scenario = scenario_map[scenario_name]
-            st.caption(
-                f"Scenario period: {scenario['period']} | Note: {scenario['note']}"
+            st.markdown(
+                (
+                    f"<div style='margin: 0.35rem 0 0.6rem 0; padding: 0.55rem 0.8rem; border-radius: 8px; "
+                    f"background: {scenario['engine_color']}; color: #FFFFFF; font-weight: 700; letter-spacing: 0.2px;'>"
+                    f"Test Engine · {scenario_name} · {scenario['period']}"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
             )
-            st.caption(
-                f"Calibration evidence: {scenario['evidence']}"
-            )
-            st.caption(
-                f"Calibration basis: {scenario['calibration_basis']}"
-            )
-            st.caption(
-                f"Transmission channels: {scenario['transmission_channels']}"
-            )
-            st.caption(
-                "Stress methodology: stressed_score = clamp((base_score * scenario_multiplier + scenario_additive_shock) * intensity, 0, 100)."
-            )
-            st.caption(
-                "Interpret intensity: increase => magnify historical shock impact; decrease => partial shock replay."
-            )
+
+            with st.expander("Test Engine", expanded=False):
+                st.markdown("#### Why this calculation")
+                st.markdown(
+                    """
+- Engine uses two shock components to avoid underfitting or overfitting one-dimensional stress:
+  1) `scenario_multiplier` captures volatility-regime escalation,
+  2) `scenario_additive_shock` captures liquidity/contagion premium not explained by baseline score scaling alone.
+- Final bounded transformation:
+  `stressed_score = clamp((base_score * scenario_multiplier + scenario_additive_shock) * intensity, 0, 100)`.
+- `intensity` provides controllable replay of weaker/stronger shock realizations while preserving scenario structure.
+                    """
+                )
+                st.markdown("#### Scenario Rationale")
+                st.markdown(f"- **起因背景**: {scenario['origin_background']}")
+                st.markdown(f"- **演化过程**: {scenario['progression']}")
+                st.markdown(f"- **带来影响**: {scenario['impact']}")
+                st.markdown(f"- **传导链路**: {scenario['transmission_channels']}")
+                st.markdown("#### Calibration & Evidence")
+                st.markdown(f"- **Calibration basis**: {scenario['calibration_basis']}")
+                st.markdown(f"- **Evidence summary**: {scenario['evidence']}")
+                st.markdown(f"- **Why this is accurate enough for stress testing**: {scenario['accuracy_evidence']}")
+                st.caption(
+                    "Evidence style follows market stylized facts (volatility clustering, spread widening, correlation convergence, jump-risk episodes) and model-consistency checks. "
+                    "This module is for risk stress replay and control-setting, not exact return forecasting."
+                )
 
             stressed_rows = []
             for row in filtered_rows:
