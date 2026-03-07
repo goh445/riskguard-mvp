@@ -9,6 +9,7 @@ import uuid
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
+import requests
 
 from audit_store import AuditStore
 from config import settings
@@ -18,7 +19,15 @@ from forex_market_data import ForexMarketDataClient
 from forex_graph_engine import ForexGraphRiskEngine
 from forex_pair_scanner import ForexPairScanner
 from news_intelligence import GlobalNewsIntelligence
-from models import ForexRiskRequest, ForexRiskResponse, NewsSourceUpsertRequest, RiskResponse, TransactionRequest
+from models import (
+    CooperativeRiskShareRequest,
+    ForexRiskRequest,
+    ForexRiskResponse,
+    NewsSourceUpsertRequest,
+    RiskResponse,
+    TransactionRequest,
+    WebhookSubscriptionUpsertRequest,
+)
 from risk_engine import RiskEngine
 from service_controls import SlidingWindowRateLimiter, is_api_key_valid
 
@@ -104,6 +113,62 @@ def enforce_rate_limit(request: Request) -> None:
     raise HTTPException(status_code=429, detail="Rate limit exceeded. Please retry later.")
 
 
+def _dispatch_webhook_event(event_type: str, payload: dict[str, object]) -> dict[str, int]:
+    """Dispatch one event payload to enabled subscribers and persist delivery audit."""
+    subscriptions = audit_store.list_webhook_subscriptions(enabled_only=True)
+    delivered = 0
+    failed = 0
+
+    for subscription in subscriptions:
+        events = subscription.get("events", [])
+        if not isinstance(events, list) or event_type not in events:
+            continue
+
+        url = str(subscription.get("url", "")).strip()
+        if not url:
+            continue
+
+        body = {
+            "event": event_type,
+            "sent_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "payload": payload,
+        }
+        headers = {"Content-Type": "application/json"}
+        secret = subscription.get("secret")
+        if secret:
+            headers["X-RiskGuard-Webhook-Secret"] = str(secret)
+
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=6)
+            success = 200 <= response.status_code < 300
+            if success:
+                delivered += 1
+            else:
+                failed += 1
+            audit_store.log_webhook_delivery(
+                subscription_id=int(subscription.get("id", 0)),
+                event_type=event_type,
+                destination_url=url,
+                status_code=response.status_code,
+                success=success,
+                response_preview=(response.text or "")[:240],
+                payload=body,
+            )
+        except requests.RequestException as exc:
+            failed += 1
+            audit_store.log_webhook_delivery(
+                subscription_id=int(subscription.get("id", 0)),
+                event_type=event_type,
+                destination_url=url,
+                status_code=None,
+                success=False,
+                response_preview=str(exc),
+                payload=body,
+            )
+
+    return {"delivered": delivered, "failed": failed}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Health check endpoint."""
@@ -141,6 +206,19 @@ def ops_summary(_auth: None = Depends(require_api_key)) -> dict[str, float | int
     return audit_store.summary_last_24h()
 
 
+@app.get("/ops/audit-trail")
+def audit_trail(
+    limit: int = 100,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
+    """Return tamper-evident analysis audit trail for regulatory transparency."""
+    rows = audit_store.list_audit_trail(limit=limit)
+    return {
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
 @app.get("/ops/top-risk-pairs")
 def top_risk_pairs(
     limit: int = 5,
@@ -150,6 +228,110 @@ def top_risk_pairs(
 ) -> dict[str, object]:
     """Return today's highest-risk major FX pairs with automatic daily scan."""
     return forex_pair_scanner.top_risk_pairs(limit=limit, force_refresh=force_refresh)
+
+
+@app.post("/ops/cooperative-risk/share")
+def cooperative_share(
+    payload: CooperativeRiskShareRequest,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, object]:
+    """Share anonymized risk signal into cooperative model data pool."""
+    row_id = audit_store.insert_cooperative_signal(
+        pair=payload.pair,
+        category=payload.category,
+        score=payload.score,
+        status=payload.status,
+        flags=payload.flags,
+        expected_shortfall_95=payload.expected_shortfall_95,
+        ewma_volatility=payload.ewma_volatility,
+        aml_hidden_paths=payload.aml_hidden_paths,
+        source_region=payload.source_region,
+        metadata=payload.metadata or {},
+    )
+    return {
+        "shared": True,
+        "signal_id": row_id,
+    }
+
+
+@app.get("/ops/cooperative-risk/summary")
+def cooperative_summary(
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
+    """Return anonymized cooperative risk pool summary."""
+    return audit_store.cooperative_summary_last_30d()
+
+
+@app.post("/api/v1/subscriptions")
+def create_subscription(
+    payload: WebhookSubscriptionUpsertRequest,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, object]:
+    """Create or update webhook subscription for API-first integration mode."""
+    subscription_id = audit_store.create_webhook_subscription(
+        url=payload.url,
+        events=payload.events,
+        secret=payload.secret,
+        enabled=payload.enabled,
+        description=payload.description,
+    )
+    return {
+        "saved": True,
+        "subscription_id": subscription_id,
+    }
+
+
+@app.get("/api/v1/subscriptions")
+def list_subscriptions(
+    enabled_only: bool = False,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
+    """List webhook subscriptions for API subscription monetization flow."""
+    items = audit_store.list_webhook_subscriptions(enabled_only=enabled_only)
+    return {
+        "count": len(items),
+        "subscriptions": items,
+    }
+
+
+@app.delete("/api/v1/subscriptions/{subscription_id}")
+def delete_subscription(
+    subscription_id: int,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, object]:
+    """Delete one webhook subscription by id."""
+    deleted = audit_store.delete_webhook_subscription(subscription_id)
+    return {
+        "deleted": bool(deleted),
+    }
+
+
+@app.post("/api/v1/subscriptions/{subscription_id}/test")
+def test_subscription(
+    subscription_id: int,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> dict[str, object]:
+    """Trigger a test webhook event for one subscription."""
+    subscriptions = audit_store.list_webhook_subscriptions(enabled_only=False)
+    matched = next((row for row in subscriptions if int(row.get("id", 0)) == subscription_id), None)
+    if not matched:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    dispatch = _dispatch_webhook_event(
+        "risk.subscription.test",
+        {
+            "subscription_id": subscription_id,
+            "message": "RiskGuard webhook test event",
+        },
+    )
+    return {
+        "tested": True,
+        **dispatch,
+    }
 
 
 @app.get("/ops/news-sources")
@@ -235,7 +417,30 @@ def analyze_forex_risk(
             "metadata": merged_metadata,
         }
     )
-    return forex_graph_engine.analyze(enriched_payload)
+    response = forex_graph_engine.analyze(enriched_payload)
+    _dispatch_webhook_event(
+        "risk.forex.analyzed",
+        {
+            "pair": f"{payload.base_currency}/{payload.quote_currency}",
+            "score": response.score,
+            "status": response.status,
+            "flags": response.flags,
+            "hidden_links": response.hidden_links,
+            "expected_shortfall_95": response.debug.get("expected_shortfall_95") if response.debug else None,
+            "ewma_volatility": response.debug.get("ewma_volatility") if response.debug else None,
+        },
+    )
+    return response
+
+
+@app.post("/api/v1/risk/forex", response_model=ForexRiskResponse)
+def analyze_forex_risk_v1(
+    payload: ForexRiskRequest,
+    _auth: None = Depends(require_api_key),
+    _limit: None = Depends(enforce_rate_limit),
+) -> ForexRiskResponse:
+    """RESTful alias endpoint for API-first monetization and partner integration."""
+    return analyze_forex_risk(payload, _auth=_auth, _limit=_limit)
 
 
 @app.get("/forex/market-snapshot")

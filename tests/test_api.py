@@ -154,3 +154,95 @@ def test_news_sources_crud_endpoints(monkeypatch) -> None:
     deleted = client.request("DELETE", "/ops/news-sources", params={"url": "https://feeds.example.com/b"})
     assert deleted.status_code == 200
     assert deleted.json()["deleted"] in {0, 1}
+
+
+def test_cooperative_risk_endpoints(monkeypatch) -> None:
+    client = TestClient(app)
+
+    class StubAuditStore:
+        @staticmethod
+        def insert_cooperative_signal(**kwargs):
+            return 101
+
+        @staticmethod
+        def cooperative_summary_last_30d():
+            return {
+                "window_days": 30,
+                "total_shared_signals": 5,
+                "avg_shared_score": 67.2,
+                "high_risk_shared_count": 2,
+                "top_pairs": [{"pair": "USD/MYR", "signal_count": 2, "avg_score": 70.0}],
+                "category_distribution": [{"category": "FOREX", "count": 4}],
+            }
+
+    monkeypatch.setattr("main.audit_store", StubAuditStore)
+
+    share_resp = client.post(
+        "/ops/cooperative-risk/share",
+        json={
+            "pair": "USD/MYR",
+            "category": "FOREX",
+            "score": 71,
+            "status": "HIGH",
+            "flags": ["volatility_spike"],
+        },
+    )
+    assert share_resp.status_code == 200
+    assert share_resp.json()["shared"] is True
+
+    summary_resp = client.get("/ops/cooperative-risk/summary")
+    assert summary_resp.status_code == 200
+    assert summary_resp.json()["window_days"] == 30
+
+
+def test_subscription_endpoints(monkeypatch) -> None:
+    client = TestClient(app)
+
+    class StubAuditStore:
+        @staticmethod
+        def create_webhook_subscription(**kwargs):
+            return 7
+
+        @staticmethod
+        def list_webhook_subscriptions(enabled_only: bool = False):
+            return [
+                {
+                    "id": 7,
+                    "url": "https://example.com/webhook",
+                    "events": ["risk.forex.analyzed"],
+                    "secret": None,
+                    "enabled": True,
+                    "description": "stub",
+                    "created_at": "x",
+                    "updated_at": "x",
+                }
+            ]
+
+        @staticmethod
+        def delete_webhook_subscription(subscription_id: int):
+            return 1 if subscription_id == 7 else 0
+
+        @staticmethod
+        def log_webhook_delivery(**kwargs):
+            return 1
+
+    monkeypatch.setattr("main.audit_store", StubAuditStore)
+
+    created = client.post(
+        "/api/v1/subscriptions",
+        json={
+            "url": "https://example.com/webhook",
+            "events": ["risk.forex.analyzed"],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["saved"] is True
+
+    listed = client.get("/api/v1/subscriptions")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+
+    deleted = client.request("DELETE", "/api/v1/subscriptions/7")
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True

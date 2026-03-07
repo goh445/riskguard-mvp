@@ -98,3 +98,47 @@ class NewsSourceUpsertRequest(BaseModel):
         if not (normalized.startswith("http://") or normalized.startswith("https://")):
             raise ValueError("url must start with http:// or https://")
         return normalized
+
+
+class CooperativeRiskShareRequest(BaseModel):
+    """Input payload for anonymous cooperative risk signal sharing."""
+
+    pair: str = Field(..., min_length=3, max_length=21)
+    category: str = Field(..., min_length=3, max_length=16)
+    score: int = Field(..., ge=0, le=100)
+    status: str = Field(..., min_length=3, max_length=16)
+    flags: list[str] = Field(default_factory=list)
+    expected_shortfall_95: float | None = Field(default=None, ge=0)
+    ewma_volatility: float | None = Field(default=None, ge=0)
+    aml_hidden_paths: int | None = Field(default=None, ge=0)
+    source_region: str | None = Field(default=None, min_length=2, max_length=16)
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("pair", "category", "status", mode="before")
+    @classmethod
+    def normalize_scalar_text(cls, value: str) -> str:
+        return str(value).strip().upper()
+
+
+class WebhookSubscriptionUpsertRequest(BaseModel):
+    """Input payload for API subscription webhook setup."""
+
+    url: str = Field(..., min_length=8)
+    events: list[str] = Field(default_factory=lambda: ["risk.forex.analyzed"])
+    secret: str | None = Field(default=None, min_length=8, max_length=128)
+    enabled: bool = True
+    description: str | None = Field(default=None, max_length=160)
+
+    @field_validator("url")
+    @classmethod
+    def validate_webhook_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not (normalized.startswith("http://") or normalized.startswith("https://")):
+            raise ValueError("url must start with http:// or https://")
+        return normalized
+
+    @field_validator("events", mode="before")
+    @classmethod
+    def normalize_events(cls, value: list[str]) -> list[str]:
+        events = [str(item).strip() for item in value if str(item).strip()]
+        return events or ["risk.forex.analyzed"]

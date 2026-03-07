@@ -9,7 +9,9 @@ import re
 import time
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import requests
 import streamlit as st
 
@@ -183,6 +185,38 @@ def call_top_pairs_api(api_url: str, api_key: str, limit: int = 10) -> dict[str,
     ) from last_exception
 
 
+def _base_api_url(api_url: str) -> str:
+    normalized = normalize_analyze_url(api_url)
+    for suffix in ["/analyze-forex-risk", "/analyze-transaction"]:
+        if normalized.endswith(suffix):
+            return normalized[: -len(suffix)]
+    return normalized
+
+
+def call_ops_get(api_url: str, api_key: str, path: str, timeout: tuple[int, int] = (8, 45)) -> dict[str, object]:
+    """Call one backend GET endpoint and return JSON payload."""
+    endpoint = f"{_base_api_url(api_url)}{path}"
+    headers = {"X-API-Key": api_key} if api_key else None
+    response = requests.get(endpoint, headers=headers, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def call_ops_post(
+    api_url: str,
+    api_key: str,
+    path: str,
+    payload: dict[str, object],
+    timeout: tuple[int, int] = (8, 45),
+) -> dict[str, object]:
+    """Call one backend POST endpoint and return JSON payload."""
+    endpoint = f"{_base_api_url(api_url)}{path}"
+    headers = {"X-API-Key": api_key} if api_key else None
+    response = requests.post(endpoint, headers=headers, json=payload, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
 def pair_category(pair: str) -> str:
     """Classify pair into Forex, Commodity, Crypto, or Stock."""
     try:
@@ -308,7 +342,7 @@ def _coingecko_trend_text(coin_id: str) -> str | None:
         return None
 
 
-def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
+def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str | float | bool]:
     """Resolve best-effort asset identity/background/trend for AI summary context."""
     base = base_code.upper().strip()
     quote = quote_code.upper().strip()
@@ -329,6 +363,8 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
             "background": "This is an equity ticker representing a listed company stock.",
             "trend": trend,
             "resolution_source": "builtin:stock",
+            "confidence": 0.99,
+            "needs_confirmation": False,
         }
 
     if base in COMMODITY_BASES:
@@ -342,6 +378,8 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
             "background": "This is a commodity market instrument, typically driven by supply-demand, inventory, and macro factors.",
             "trend": trend,
             "resolution_source": "builtin:commodity",
+            "confidence": 0.99,
+            "needs_confirmation": False,
         }
 
     if base in CRYPTO_BASES:
@@ -353,6 +391,8 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
             "background": "This is a cryptocurrency asset traded continuously with sentiment and liquidity sensitivity.",
             "trend": trend,
             "resolution_source": "builtin:crypto",
+            "confidence": 0.99,
+            "needs_confirmation": False,
         }
 
     if base in FOREX_FLAG_CODES and quote in FOREX_FLAG_CODES:
@@ -363,6 +403,8 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
             "background": "This is a foreign-exchange pair representing relative value between two fiat currencies.",
             "trend": "FX trend context is derived from live rate and volatility signals.",
             "resolution_source": "builtin:forex",
+            "confidence": 0.98,
+            "needs_confirmation": False,
         }
 
     yahoo_match = _yahoo_search_symbol(base)
@@ -375,12 +417,15 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
         if quote_type in {"EQUITY", "ETF"}:
             category = "Stock"
             background = f"{longname} is a publicly traded company/instrument represented by ticker {resolved_symbol}."
+            confidence = 0.92 if resolved_symbol == base else 0.76
         elif quote_type == "CRYPTOCURRENCY":
             category = "Crypto"
             background = f"{longname} is a crypto asset represented by symbol {resolved_symbol}."
+            confidence = 0.9 if resolved_symbol == base else 0.72
         else:
             category = "Forex"
             background = f"{longname} is the closest market instrument match for input symbol {base}."
+            confidence = 0.62
         return {
             "detected_category": category,
             "asset_name": longname,
@@ -388,6 +433,8 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
             "background": background,
             "trend": trend,
             "resolution_source": "yahoo_search",
+            "confidence": round(confidence, 2),
+            "needs_confirmation": confidence < 0.8,
         }
 
     coin_match = _coingecko_search_symbol(base)
@@ -403,6 +450,8 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
             "background": f"{coin_name} is the closest crypto match for input symbol {base}.",
             "trend": trend,
             "resolution_source": "coingecko_search",
+            "confidence": 0.74 if coin_symbol != base else 0.88,
+            "needs_confirmation": coin_symbol != base,
         }
 
     return {
@@ -412,7 +461,42 @@ def resolve_asset_profile(base_code: str, quote_code: str) -> dict[str, str]:
         "background": f"No exact market match found online; using {base} as provided input for risk interpretation.",
         "trend": "Recent trend unavailable",
         "resolution_source": "fallback:input",
+        "confidence": 0.2,
+        "needs_confirmation": True,
     }
+
+
+def auto_adjust_asset_by_category(base_code: str, category: str) -> str:
+    """Auto-adjust user-entered asset code to a valid symbol for selected category."""
+    base = base_code.upper().strip()
+    defaults = {
+        "Forex": "EUR",
+        "Stock": "AAPL",
+        "Commodity": "XAU",
+        "Crypto": "BTC",
+    }
+
+    if category == "Forex":
+        return base if base in FOREX_FLAG_CODES else defaults["Forex"]
+    if category == "Stock":
+        if base in STOCK_BASES:
+            return base
+        yahoo_match = _yahoo_search_symbol(base)
+        if yahoo_match and str(yahoo_match.get("quoteType", "")).upper() in {"EQUITY", "ETF"}:
+            symbol = str(yahoo_match.get("symbol", defaults["Stock"])).upper()
+            return symbol if symbol in STOCK_BASES or len(symbol) <= 10 else defaults["Stock"]
+        return defaults["Stock"]
+    if category == "Commodity":
+        return base if base in COMMODITY_BASES else defaults["Commodity"]
+    if category == "Crypto":
+        if base in CRYPTO_BASES:
+            return base
+        coin_match = _coingecko_search_symbol(base)
+        if coin_match:
+            symbol = str(coin_match.get("symbol", defaults["Crypto"])).upper()
+            return symbol if len(symbol) <= 10 else defaults["Crypto"]
+        return defaults["Crypto"]
+    return base
 
 
 def _extract_json_object(text: str) -> str | None:
@@ -618,6 +702,10 @@ if "leaderboard_cache" not in st.session_state:
     st.session_state.leaderboard_cache = None
 if "asset_filter" not in st.session_state:
     st.session_state.asset_filter = "All"
+if "pending_analysis" not in st.session_state:
+    st.session_state.pending_analysis = None
+if "assurance_report" not in st.session_state:
+    st.session_state.assurance_report = None
 
 with st.sidebar:
     st.header("API Settings")
@@ -633,9 +721,20 @@ with st.sidebar:
         st.warning(f"Backend unreachable: {health_url}")
     auto_refresh = st.toggle("Auto refresh leaderboard", value=False)
     refresh_seconds = st.slider("Refresh interval (sec)", min_value=15, max_value=120, value=30, step=5)
+    cooperative_sharing_enabled = st.toggle(
+        "Share anonymized risk signals to cooperative pool",
+        value=False,
+        help="Only aggregated/anonymous risk signals are shared.",
+    )
+    source_region = st.text_input("Signal region tag (optional)", value="MY")
 
-tab_board, tab_analyze, tab_history = st.tabs(
-    ["Live Multi-Asset Board", "Analyze One Asset Pair", "Risk History Timeline"]
+tab_board, tab_analyze, tab_history, tab_assurance = st.tabs(
+    [
+        "Live Multi-Asset Board",
+        "Analyze One Asset Pair",
+        "Risk History Timeline",
+        "AI Assurance & Audit",
+    ]
 )
 
 with tab_board:
@@ -716,6 +815,78 @@ with tab_board:
                 "quote_icon": st.column_config.ImageColumn("Quote"),
             },
         )
+
+        heat_df = pd.DataFrame(
+            [
+                {
+                    "category": row["category"],
+                    "status": str(row.get("status", "Unknown")),
+                    "score": float(row.get("score", 0) or 0),
+                }
+                for row in filtered_rows
+            ]
+        )
+        if not heat_df.empty:
+            st.markdown("### Risk Heat Map")
+            heat_fig = px.density_heatmap(
+                heat_df,
+                x="category",
+                y="status",
+                z="score",
+                histfunc="avg",
+                color_continuous_scale="YlOrRd",
+                title="Average Risk Score by Asset Category and Risk Status",
+            )
+            heat_fig.update_layout(height=360)
+            st.plotly_chart(heat_fig, use_container_width=True)
+
+            st.markdown("### Stress Test Simulator")
+            scenario_map = {
+                "Custom": {"mult": 1.0, "add": 0.0, "note": "Manual scenario."},
+                "2008 Financial Crisis": {"mult": 1.35, "add": 12.0, "note": "Credit and liquidity shock amplification."},
+                "COVID Liquidity Shock": {"mult": 1.25, "add": 9.0, "note": "Volatility jump and spread widening."},
+                "Rate Hike Surprise": {"mult": 1.15, "add": 6.0, "note": "Policy shock and repricing pressure."},
+                "Commodity Supply Shock": {"mult": 1.2, "add": 8.0, "note": "Energy/raw-material spillover stress."},
+            }
+            sim_col_1, sim_col_2, sim_col_3 = st.columns(3)
+            scenario_name = sim_col_1.selectbox("Scenario", list(scenario_map.keys()), index=0)
+            scenario_intensity = sim_col_2.slider("Scenario intensity", min_value=0.5, max_value=2.0, value=1.0, step=0.05)
+            show_top_n = sim_col_3.slider("Top impacted assets", min_value=5, max_value=30, value=10, step=1)
+
+            scenario = scenario_map[scenario_name]
+            st.caption(
+                f"Scenario note: {scenario['note']} Drag-and-drop historical events are simulated here via scenario presets and intensity slider."
+            )
+
+            stressed_rows = []
+            for row in filtered_rows:
+                base_score = float(row.get("score", 0) or 0)
+                stressed_score = min(100.0, max(0.0, (base_score * scenario["mult"] + scenario["add"]) * scenario_intensity))
+                stressed_rows.append(
+                    {
+                        "pair": row.get("pair"),
+                        "category": row.get("category"),
+                        "base_score": round(base_score, 2),
+                        "stressed_score": round(stressed_score, 2),
+                        "delta": round(stressed_score - base_score, 2),
+                    }
+                )
+
+            stressed_rows.sort(key=lambda item: float(item["stressed_score"]), reverse=True)
+            stressed_top = stressed_rows[:show_top_n]
+            st.dataframe(stressed_top, use_container_width=True)
+
+            if stressed_top:
+                stressed_fig = px.bar(
+                    stressed_top,
+                    x="pair",
+                    y="stressed_score",
+                    color="category",
+                    hover_data=["base_score", "delta"],
+                    title="Stress Scenario Impact (Stressed Score)",
+                )
+                stressed_fig.update_layout(height=360)
+                st.plotly_chart(stressed_fig, use_container_width=True)
     else:
         st.info("No rankings available yet.")
 
@@ -829,11 +1000,81 @@ with tab_analyze:
         submitted = st.form_submit_button("Analyze Forex Risk")
 
     if submitted:
-        payload = {
+        st.session_state.pending_analysis = {
             "base_currency": base_currency,
             "quote_currency": quote_currency,
             "timestamp": timestamp,
-            "metadata": {},
+            "resolver_adjusted": False,
+            "original_base_currency": base_currency,
+            "original_quote_currency": quote_currency,
+        }
+
+    pending = st.session_state.pending_analysis
+    if pending:
+        pending_base = str(pending.get("base_currency", base_currency)).upper()
+        pending_quote = str(pending.get("quote_currency", quote_currency)).upper()
+        pending_timestamp = str(pending.get("timestamp", timestamp))
+
+        precheck_profile = resolve_asset_profile(
+            base_code=pending_base,
+            quote_code=pending_quote,
+        )
+
+        if bool(precheck_profile.get("needs_confirmation", False)):
+            st.warning(
+                "Asset mapping confidence is low. Please confirm category so the system can auto-adjust to a valid market symbol."
+            )
+            conf_col_1, conf_col_2, conf_col_3 = st.columns(3)
+            chosen_category = conf_col_1.selectbox(
+                "Detected / Confirm Category",
+                options=["Forex", "Stock", "Commodity", "Crypto"],
+                index=["Forex", "Stock", "Commodity", "Crypto"].index(
+                    str(precheck_profile.get("detected_category", "Forex"))
+                    if str(precheck_profile.get("detected_category", "Forex")) in {"Forex", "Stock", "Commodity", "Crypto"}
+                    else "Forex"
+                ),
+                key="asset_confirm_category",
+            )
+            suggested_base = conf_col_2.text_input(
+                "Suggested Base",
+                value=str(precheck_profile.get("resolved_symbol", pending_base)),
+                key="asset_confirm_base",
+            )
+            suggested_quote = conf_col_3.text_input(
+                "Quote",
+                value=pending_quote,
+                key="asset_confirm_quote",
+            )
+
+            confirm_col_1, confirm_col_2 = st.columns(2)
+            if confirm_col_1.button("Confirm And Auto-Adjust"):
+                adjusted_base = auto_adjust_asset_by_category(suggested_base, chosen_category)
+                adjusted_quote = suggested_quote.upper().strip() or "USD"
+                st.session_state.pending_analysis = {
+                    "base_currency": adjusted_base,
+                    "quote_currency": adjusted_quote,
+                    "timestamp": pending_timestamp,
+                    "resolver_adjusted": True,
+                    "original_base_currency": pending.get("original_base_currency", pending_base),
+                    "original_quote_currency": pending.get("original_quote_currency", pending_quote),
+                    "confirmed_category": chosen_category,
+                }
+                st.rerun()
+            if confirm_col_2.button("Cancel Analysis"):
+                st.session_state.pending_analysis = None
+                st.info("Analysis canceled. Please input a valid asset pair and retry.")
+            st.stop()
+
+        payload = {
+            "base_currency": pending_base,
+            "quote_currency": pending_quote,
+            "timestamp": pending_timestamp,
+            "metadata": {
+                "resolver_adjusted": bool(pending.get("resolver_adjusted", False)),
+                "original_base_currency": pending.get("original_base_currency", pending_base),
+                "original_quote_currency": pending.get("original_quote_currency", pending_quote),
+                "confirmed_category": pending.get("confirmed_category"),
+            },
         }
         progress_text = st.empty()
         progress = st.progress(0)
@@ -931,15 +1172,63 @@ with tab_analyze:
                 aml_score,
             ]
 
-            radar_fig = px.line_polar(
-                r=radar_values + [radar_values[0]],
-                theta=radar_categories + [radar_categories[0]],
-                line_close=True,
-                range_r=[0, 100],
-                title="Risk Radar (Normalized 0-100)",
+            radar_explanations = [
+                {
+                    "meaning": "近期市场波动强度（EWMA）",
+                    "impact": "越高代表短期不稳定性越强，风险分更容易被放大。",
+                    "how_to_read": "<35 常态；35-65 需谨慎；>65 建议降杠杆并缩短持仓周期。",
+                },
+                {
+                    "meaning": "95%预期损失（尾部风险）",
+                    "impact": "衡量极端行情下的平均潜在损失，捕捉黑天鹅风险。",
+                    "how_to_read": "越高越需保守仓位和更紧止损，优先保护回撤。",
+                },
+                {
+                    "meaning": "流动性压力（点差代理）",
+                    "impact": "越高说明交易成本和滑点风险更高，执行质量下降。",
+                    "how_to_read": "高位时避免追单，优先限价单与分批成交。",
+                },
+                {
+                    "meaning": "传染路径强度（图谱路径风险）",
+                    "impact": "反映跨资产间风险传导强度，越高越容易被外部冲击带动。",
+                    "how_to_read": "高位时减少单一主题暴露，注意相关资产共振。",
+                },
+                {
+                    "meaning": "AML间接链路密度",
+                    "impact": "多条共享中介节点路径意味着更复杂的间接传染/资金链风险。",
+                    "how_to_read": "高位时加强来源核验与异常链路复核，缩小试探仓位。",
+                },
+            ]
+            radar_customdata = [
+                [item["meaning"], item["impact"], item["how_to_read"]] for item in radar_explanations
+            ]
+
+            radar_fig = go.Figure(
+                data=[
+                    go.Scatterpolar(
+                        r=radar_values + [radar_values[0]],
+                        theta=radar_categories + [radar_categories[0]],
+                        fill="toself",
+                        name="Risk Profile",
+                        customdata=radar_customdata + [radar_customdata[0]],
+                        hovertemplate=(
+                            "<b>%{theta}</b><br>"
+                            "Normalized Score: %{r:.1f}/100<br>"
+                            "含义: %{customdata[0]}<br>"
+                            "作用: %{customdata[1]}<br>"
+                            "怎么看: %{customdata[2]}<extra></extra>"
+                        ),
+                    )
+                ]
             )
-            radar_fig.update_traces(fill="toself")
-            radar_fig.update_layout(height=360, showlegend=False)
+            radar_fig.update_layout(
+                title="Risk Radar (Normalized 0-100)",
+                height=360,
+                showlegend=False,
+                polar=dict(
+                    radialaxis=dict(range=[0, 100]),
+                ),
+            )
             st.plotly_chart(radar_fig, use_container_width=True)
 
             summary_text, strategy_points, summary_source = build_ai_summary_and_strategy(
@@ -955,6 +1244,35 @@ with tab_analyze:
             for strategy_item in strategy_points:
                 st.write(f"- {strategy_item}")
             st.caption(f"Summary source: {summary_source}")
+
+            if cooperative_sharing_enabled:
+                try:
+                    shared_payload = {
+                        "pair": f"{base_currency.upper()}/{quote_currency.upper()}",
+                        "category": resolved_profile.get("detected_category", pair_category(f"{base_currency.upper()}/{quote_currency.upper()}")),
+                        "score": int(result.get("score", 0) or 0),
+                        "status": str(result.get("status", "UNKNOWN")).upper(),
+                        "flags": result.get("flags", []),
+                        "expected_shortfall_95": float(debug_payload.get("expected_shortfall_95", 0.0) or 0.0),
+                        "ewma_volatility": float(debug_payload.get("ewma_volatility", 0.0) or 0.0),
+                        "aml_hidden_paths": len(result.get("hidden_links", [])),
+                        "source_region": source_region.strip().upper() if source_region.strip() else None,
+                        "metadata": {
+                            "resolution_source": resolved_profile.get("resolution_source"),
+                            "market_data_source": debug_payload.get("market_data_source"),
+                        },
+                    }
+                    share_response = call_ops_post(
+                        api_url=normalized_api_url,
+                        api_key=api_key,
+                        path="/ops/cooperative-risk/share",
+                        payload=shared_payload,
+                    )
+                    st.caption(
+                        f"Cooperative model shared: {share_response.get('shared')} | signal_id={share_response.get('signal_id')}"
+                    )
+                except requests.RequestException as exc:
+                    st.warning(f"Cooperative sharing skipped: {exc}")
 
             info_col_1, info_col_2 = st.columns(2)
             with info_col_1:
@@ -972,6 +1290,8 @@ with tab_analyze:
 
             with st.expander("Detailed Debug Data"):
                 st.json(debug_payload)
+
+            st.session_state.pending_analysis = None
 
             event_time = datetime.now(ZoneInfo("Asia/Kuala_Lumpur"))
             st.session_state.forex_history.append(
@@ -1046,6 +1366,151 @@ with tab_history:
         st.dataframe(chart_data, use_container_width=True)
     else:
         st.info("No forex risk events yet. Submit analysis to build timeline.")
+
+with tab_assurance:
+    st.subheader("AI Assurance (NIST/OECD) + Regulatory Audit")
+    st.markdown("### NIST AI RMF Self-Assessment")
+    n_col_1, n_col_2, n_col_3, n_col_4 = st.columns(4)
+    nist_govern = n_col_1.slider("GOVERN", min_value=0, max_value=100, value=62, step=1)
+    nist_map = n_col_2.slider("MAP", min_value=0, max_value=100, value=58, step=1)
+    nist_measure = n_col_3.slider("MEASURE", min_value=0, max_value=100, value=61, step=1)
+    nist_manage = n_col_4.slider("MANAGE", min_value=0, max_value=100, value=59, step=1)
+
+    st.markdown("### OECD AI Principles Alignment")
+    o_col_1, o_col_2, o_col_3, o_col_4, o_col_5 = st.columns(5)
+    oecd_transparency = o_col_1.slider("Transparency", min_value=0, max_value=100, value=64, step=1)
+    oecd_robustness = o_col_2.slider("Robustness", min_value=0, max_value=100, value=63, step=1)
+    oecd_accountability = o_col_3.slider("Accountability", min_value=0, max_value=100, value=60, step=1)
+    oecd_fairness = o_col_4.slider("Fairness", min_value=0, max_value=100, value=57, step=1)
+    oecd_safety = o_col_5.slider("Safety", min_value=0, max_value=100, value=65, step=1)
+
+    nist_score = round((nist_govern + nist_map + nist_measure + nist_manage) / 4, 2)
+    oecd_score = round((oecd_transparency + oecd_robustness + oecd_accountability + oecd_fairness + oecd_safety) / 5, 2)
+    assurance_score = round((nist_score * 0.55) + (oecd_score * 0.45), 2)
+
+    a_col_1, a_col_2, a_col_3 = st.columns(3)
+    a_col_1.metric("NIST RMF Score", nist_score)
+    a_col_2.metric("OECD Principles Score", oecd_score)
+    a_col_3.metric("AI Assurance Composite", assurance_score)
+
+    if assurance_score >= 75:
+        assurance_level = "Strong"
+    elif assurance_score >= 55:
+        assurance_level = "Moderate"
+    else:
+        assurance_level = "Needs Improvement"
+
+    st.caption(
+        "AI Assurance positioning: converts compliance from cost center to premium assurance service for regulated clients."
+    )
+
+    report_payload = {
+        "generated_at_utc": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
+        "framework": "NIST AI RMF + OECD Principles",
+        "nist": {
+            "govern": nist_govern,
+            "map": nist_map,
+            "measure": nist_measure,
+            "manage": nist_manage,
+            "score": nist_score,
+        },
+        "oecd": {
+            "transparency": oecd_transparency,
+            "robustness": oecd_robustness,
+            "accountability": oecd_accountability,
+            "fairness": oecd_fairness,
+            "safety": oecd_safety,
+            "score": oecd_score,
+        },
+        "composite_score": assurance_score,
+        "assurance_level": assurance_level,
+        "recommended_actions": [
+            "Document model governance and change-control evidence quarterly.",
+            "Track ES/EWMA/AML indicators with threshold-based escalation policy.",
+            "Maintain webhook and audit-chain logs for regulator-facing transparency.",
+        ],
+    }
+
+    st.download_button(
+        "Download AI Assurance Report (JSON)",
+        data=json.dumps(report_payload, ensure_ascii=False, indent=2),
+        file_name="riskguard_ai_assurance_report.json",
+        mime="application/json",
+    )
+
+    st.markdown("### API Subscription Mode (Webhook)")
+    s_col_1, s_col_2 = st.columns(2)
+    webhook_url = s_col_1.text_input("Webhook URL", value="")
+    webhook_secret = s_col_2.text_input("Webhook Secret (optional)", value="", type="password")
+    webhook_events = st.multiselect(
+        "Events",
+        options=["risk.forex.analyzed", "risk.subscription.test"],
+        default=["risk.forex.analyzed"],
+    )
+    if st.button("Save Webhook Subscription", type="primary"):
+        if webhook_url.strip():
+            try:
+                save_result = call_ops_post(
+                    api_url=normalized_api_url,
+                    api_key=api_key,
+                    path="/api/v1/subscriptions",
+                    payload={
+                        "url": webhook_url.strip(),
+                        "events": webhook_events,
+                        "secret": webhook_secret.strip() or None,
+                        "enabled": True,
+                        "description": "Saved via Streamlit assurance tab",
+                    },
+                )
+                st.success(f"Subscription saved: id={save_result.get('subscription_id')}")
+            except requests.RequestException as exc:
+                st.error(f"Failed to save subscription: {exc}")
+        else:
+            st.warning("Webhook URL is required.")
+
+    try:
+        subscriptions_payload = call_ops_get(
+            api_url=normalized_api_url,
+            api_key=api_key,
+            path="/api/v1/subscriptions",
+        )
+        st.dataframe(subscriptions_payload.get("subscriptions", []), use_container_width=True)
+    except requests.RequestException as exc:
+        st.info(f"Subscriptions unavailable: {exc}")
+
+    st.markdown("### Cooperative Risk Model Summary")
+    try:
+        cooperative_summary = call_ops_get(
+            api_url=normalized_api_url,
+            api_key=api_key,
+            path="/ops/cooperative-risk/summary",
+        )
+        c_sum_1, c_sum_2, c_sum_3 = st.columns(3)
+        c_sum_1.metric("Shared Signals (30d)", cooperative_summary.get("total_shared_signals", 0))
+        c_sum_2.metric("Avg Shared Score", cooperative_summary.get("avg_shared_score", 0))
+        c_sum_3.metric("High-Risk Shared", cooperative_summary.get("high_risk_shared_count", 0))
+        st.write("Top Shared Pairs")
+        st.dataframe(cooperative_summary.get("top_pairs", []), use_container_width=True)
+        st.write("Category Distribution")
+        st.dataframe(cooperative_summary.get("category_distribution", []), use_container_width=True)
+    except requests.RequestException as exc:
+        st.info(f"Cooperative summary unavailable: {exc}")
+
+    st.markdown("### Immutable Audit Trail")
+    try:
+        audit_payload = call_ops_get(
+            api_url=normalized_api_url,
+            api_key=api_key,
+            path="/ops/audit-trail?limit=100",
+            timeout=(8, 60),
+        )
+        audit_rows = audit_payload.get("rows", [])
+        st.caption(
+            "Tamper-evident chain fields: each row links to previous row via prev_hash and entry_hash for traceability."
+        )
+        st.dataframe(audit_rows, use_container_width=True)
+    except requests.RequestException as exc:
+        st.info(f"Audit trail unavailable: {exc}")
 
 if auto_refresh:
     time.sleep(refresh_seconds)
