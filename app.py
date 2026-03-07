@@ -23,6 +23,7 @@ UI_GEMINI_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-2.5-flash")
 
 USAGE_GUIDE_LAST_UPDATED = "2026-03-07"
 USAGE_GUIDE_CHANGELOG = [
+    "Moved stress score interpretation into tooltip-based help icons for base_score/delta/stressed_score and removed verbose read columns.",
     "Expanded stress test to evidence-based global macro scenarios with explicit methodology and interpretation guidance.",
     "Added AI Assurance tab (NIST AI RMF + OECD self-assessment template and downloadable report).",
     "Added API subscription mode with webhook endpoint management and test trigger.",
@@ -859,67 +860,95 @@ with tab_board:
                     "add": 0.0,
                     "period": "User-defined",
                     "note": "Manual scenario with no predefined historical shock.",
-                    "evidence": "Used for custom what-if analysis.",
+                    "evidence": "No historical preset applied. Suitable for policy sandbox and bespoke what-if replay.",
+                    "calibration_basis": "mult/add are user-neutral defaults; stress depends only on selected intensity.",
+                    "transmission_channels": "User-selected channels only; no embedded macro regime assumption.",
                 },
                 "2008 Global Financial Crisis": {
                     "mult": 1.4,
                     "add": 12.0,
                     "period": "2008-2009",
                     "note": "Systemic credit freeze, deleveraging, and severe liquidity contraction.",
-                    "evidence": "Crisis period featured extreme volatility regime shift and broad spread widening.",
+                    "evidence": "Global cross-asset volatility jumped to crisis regime and funding spreads widened abruptly.",
+                    "calibration_basis": "High multiplier captures regime shift in volatility; additive shock captures liquidity and contagion premium.",
+                    "transmission_channels": "Funding stress, forced deleveraging, USD funding squeeze, cross-asset correlation spike.",
                 },
                 "Asian Financial Crisis": {
                     "mult": 1.35,
                     "add": 11.0,
                     "period": "1997-1998",
                     "note": "Currency devaluations and funding pressure across emerging Asia.",
-                    "evidence": "Regional FX dislocations and contagion justified strong macro/liquidity shock assumptions.",
+                    "evidence": "Large EMFX devaluations, reserve pressure, and regional contagion produced persistent risk premia.",
+                    "calibration_basis": "Near-crisis multiplier for volatility clustering plus additive term for funding/liquidity stress spillover.",
+                    "transmission_channels": "FX reserve drawdown, debt-refinancing pressure, regional confidence contagion.",
                 },
                 "Dot-com Bust": {
                     "mult": 1.18,
                     "add": 7.0,
                     "period": "2000-2002",
                     "note": "Equity valuation collapse with risk-off spillover into broader assets.",
-                    "evidence": "Prolonged equity drawdowns with elevated but less systemic stress than 2008.",
+                    "evidence": "Sustained equity drawdown and risk-aversion rise, but systemic funding stress was milder than 2008.",
+                    "calibration_basis": "Moderate multiplier reflects elevated volatility without full systemic freeze; smaller additive term for spillover.",
+                    "transmission_channels": "Equity beta repricing, sentiment deterioration, sector concentration unwind.",
                 },
                 "Eurozone Sovereign Debt": {
                     "mult": 1.24,
                     "add": 8.0,
                     "period": "2011-2012",
                     "note": "Sovereign-credit stress and policy uncertainty in Europe.",
-                    "evidence": "Persistent sovereign risk premium and policy-fragmentation shocks.",
+                    "evidence": "Peripheral sovereign spreads and redenomination concerns amplified market fragmentation risk.",
+                    "calibration_basis": "Medium-high multiplier for persistent volatility and additive term for policy/fragmentation premium.",
+                    "transmission_channels": "Sovereign-bank nexus, policy uncertainty, funding fragmentation.",
                 },
                 "CHF Unpeg Shock": {
                     "mult": 1.28,
                     "add": 9.0,
                     "period": "2015",
                     "note": "SNB floor removal triggered abrupt FX gap and liquidity vacuum.",
-                    "evidence": "Event demonstrated tail jump risk and execution stress in FX markets.",
+                    "evidence": "Intraday gap moves and sharp execution slippage highlighted jump-risk and temporary liquidity collapse.",
+                    "calibration_basis": "Higher multiplier for jump-vol regime and additive term for execution/liquidity shock.",
+                    "transmission_channels": "Policy surprise, order-book thinning, stop cascade dynamics.",
                 },
                 "COVID Liquidity Shock": {
                     "mult": 1.3,
                     "add": 10.0,
                     "period": "2020",
                     "note": "Cross-asset liquidation wave and temporary market depth collapse.",
-                    "evidence": "Observed global volatility spikes and funding stress across multiple asset classes.",
+                    "evidence": "Global risk assets sold off synchronously; implied vol and funding stress surged during initial shock windows.",
+                    "calibration_basis": "High multiplier for synchronized volatility spike and additive term for broad liquidity dislocation.",
+                    "transmission_channels": "Cross-asset liquidation, margin calls, liquidity hoarding, correlation convergence.",
                 },
                 "Global Inflation & Rate Shock": {
                     "mult": 1.17,
                     "add": 6.5,
                     "period": "2022-2023",
                     "note": "Synchronized tightening cycle and rapid repricing of rates-sensitive assets.",
-                    "evidence": "Fast policy-rate adjustment caused high cross-asset correlation and repricing risk.",
+                    "evidence": "Fast policy-rate repricing increased term-premium volatility and cross-asset sensitivity to macro prints.",
+                    "calibration_basis": "Lower multiplier than crisis events but persistent additive term for repricing and liquidity frictions.",
+                    "transmission_channels": "Yield shock transmission, duration repricing, real-rate sensitivity.",
                 },
                 "Commodity Supply Shock": {
                     "mult": 1.22,
                     "add": 8.0,
                     "period": "Multiple episodes",
                     "note": "Energy/raw-material supply disruptions propagate to inflation and FX terms of trade.",
-                    "evidence": "Commodity spikes historically transmit into spread/volatility stress in import-sensitive economies.",
+                    "evidence": "Commodity spikes historically pressure inflation expectations, trade balances, and import-sensitive currencies.",
+                    "calibration_basis": "Medium-high multiplier for volatility pass-through and additive term for terms-of-trade/liquidity pressure.",
+                    "transmission_channels": "Input-cost shock, inflation expectations, external-balance stress, policy reaction uncertainty.",
                 },
             }
             sim_col_1, sim_col_2, sim_col_3 = st.columns(3)
-            scenario_name = sim_col_1.selectbox("Scenario", list(scenario_map.keys()), index=0)
+            scenario_name = sim_col_1.selectbox(
+                "Scenario",
+                list(scenario_map.keys()),
+                index=0,
+                help=(
+                    "Scenario presets are calibrated from stylized historical stress regimes, not arbitrary values. "
+                    "Each preset combines: (1) multiplier for volatility-regime amplification and "
+                    "(2) additive shock for liquidity/contagion premium. "
+                    "Use this to test resilience under historically grounded macro transmission channels."
+                ),
+            )
             scenario_intensity = sim_col_2.slider(
                 "Scenario intensity",
                 min_value=0.5,
@@ -935,7 +964,13 @@ with tab_board:
                 f"Scenario period: {scenario['period']} | Note: {scenario['note']}"
             )
             st.caption(
-                f"Calibration evidence: {scenario['evidence']} | Drag-and-drop equivalent is represented via scenario presets + intensity scaling."
+                f"Calibration evidence: {scenario['evidence']}"
+            )
+            st.caption(
+                f"Calibration basis: {scenario['calibration_basis']}"
+            )
+            st.caption(
+                f"Transmission channels: {scenario['transmission_channels']}"
             )
             st.caption(
                 "Stress methodology: stressed_score = clamp((base_score * scenario_multiplier + scenario_additive_shock) * intensity, 0, 100)."
@@ -955,15 +990,38 @@ with tab_board:
                         "base_score": round(base_score, 2),
                         "stressed_score": round(stressed_score, 2),
                         "delta": round(stressed_score - base_score, 2),
-                        "base_score_read": "Higher means current risk is already elevated." if base_score >= 70 else "Lower means current regime is relatively controlled.",
-                        "delta_read": "Higher positive delta means the selected scenario amplifies risk strongly." if (stressed_score - base_score) >= 15 else "Lower delta means scenario impact is relatively limited.",
-                        "stressed_score_read": "Higher stressed score implies stronger downside and tighter controls required." if stressed_score >= 70 else "Lower stressed score implies manageable shock absorption.",
                     }
                 )
 
             stressed_rows.sort(key=lambda item: float(item["stressed_score"]), reverse=True)
             stressed_top = stressed_rows[:show_top_n]
-            st.dataframe(stressed_top, use_container_width=True)
+            st.dataframe(
+                stressed_top,
+                use_container_width=True,
+                column_config={
+                    "base_score": st.column_config.NumberColumn(
+                        "base_score",
+                        help=(
+                            "Current model baseline risk before stress replay (0-100). "
+                            "Higher base_score means the asset is already in a higher-risk regime."
+                        ),
+                    ),
+                    "delta": st.column_config.NumberColumn(
+                        "delta",
+                        help=(
+                            "Scenario incremental impact: delta = stressed_score - base_score. "
+                            "Higher positive delta means stronger scenario amplification effect."
+                        ),
+                    ),
+                    "stressed_score": st.column_config.NumberColumn(
+                        "stressed_score",
+                        help=(
+                            "Stress-adjusted risk after applying historical scenario calibration and intensity. "
+                            "Higher stressed_score implies tighter controls and smaller risk budget."
+                        ),
+                    ),
+                },
+            )
 
             if stressed_top:
                 stressed_fig = px.bar(
@@ -971,7 +1029,7 @@ with tab_board:
                     x="pair",
                     y="stressed_score",
                     color="category",
-                    custom_data=["base_score", "delta", "base_score_read", "delta_read", "stressed_score_read"],
+                    custom_data=["base_score", "delta"],
                     title="Stress Scenario Impact (Stressed Score)",
                 )
                 stressed_fig.update_traces(
@@ -979,10 +1037,7 @@ with tab_board:
                         "<b>%{x}</b><br>"
                         "Stressed Score: %{y:.2f} (越高越风险)<br>"
                         "Base Score: %{customdata[0]:.2f} (当前风险基线)<br>"
-                        "Delta: %{customdata[1]:.2f} (情景冲击增量)<br>"
-                        "Base Score解读: %{customdata[2]}<br>"
-                        "Delta解读: %{customdata[3]}<br>"
-                        "Stressed Score解读: %{customdata[4]}<extra></extra>"
+                        "Delta: %{customdata[1]:.2f} (情景冲击增量)<extra></extra>"
                     )
                 )
                 stressed_fig.update_layout(height=360)
@@ -1686,9 +1741,9 @@ POST /api/v1/subscriptions/{subscription_id}/test""",
     for idx, note in enumerate(USAGE_GUIDE_CHANGELOG, start=1):
         st.write(f"{idx}. {note}")
 
-        st.markdown("### Stress Test Methodology")
-        st.markdown(
-                """
+    st.markdown("### Stress Test Methodology")
+    st.markdown(
+        """
 - Baseline input is model-generated `base_score` (0-100) from current ES/EWMA/AML-aware risk engine.
 - Scenario preset contributes two calibrated shock terms:
     1) multiplicative shock (`scenario_multiplier`) to reflect volatility-regime escalation,
@@ -1697,8 +1752,18 @@ POST /api/v1/subscriptions/{subscription_id}/test""",
 - Final score uses bounded transformation:
     `stressed_score = clamp((base_score * multiplier + additive) * intensity, 0, 100)`.
 - Preset calibration is anchored to stylized historical facts (crisis-period volatility/spread widening patterns), and is intended for decision support, not exact PnL forecasting.
-                """
-        )
+        """
+    )
+
+    st.markdown("### Stress Table Tooltip Guide")
+    st.markdown(
+        """
+- Hover the `?` icon on `base_score`, `delta`, and `stressed_score` column headers for on-demand definitions.
+- `base_score`: current pre-stress model baseline risk.
+- `delta`: incremental scenario impact (`stressed_score - base_score`).
+- `stressed_score`: final stress-adjusted risk after calibrated scenario replay.
+        """
+    )
 
 if auto_refresh:
     time.sleep(refresh_seconds)
