@@ -575,7 +575,7 @@ def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object], o
     else:
         regime = "controlled-risk regime"
 
-    category_explanation = {
+    category_explanation_en = {
         "Forex": (
             "Forex means one currency priced against another (base/quote). "
             "Your selected pair shows how many quote-currency units are needed for 1 unit of the base currency."
@@ -593,10 +593,16 @@ def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object], o
             "so equity news and earnings events are key drivers."
         ),
     }
+    category_explanation_zh = {
+        "Forex": "外汇表示一种法币相对另一种法币的价格（base/quote），即 1 单位 base 对应多少 quote。",
+        "Commodity": "商品资产对反映真实原材料市场（如黄金、原油、天然气、金属、农产品），通常以 USD 计价。",
+        "Crypto": "加密资产对表示数字资产相对计价货币的价格，通常具备 24/7 交易与更高情绪驱动波动。",
+        "Stock": "股票资产对表示上市公司股权在本模型中的风险定价，企业基本面与财报/政策事件是核心驱动。",
+    }
 
     if output_language == "zh":
         summary = (
-            f"你当前选择的是 {pair}（{category}），即 {base}/{quote}。{category_explanation.get(category, '')} "
+            f"你当前选择的是 {pair}（{category}），即 {base}/{quote}。{category_explanation_zh.get(category, '')} "
             f"当前风险评分为 {score}（{status}），处于 {regime}。"
             f"宏观与新闻压力为 {macro_stress:.2f}，新闻情绪为 {sentiment:.2f}，"
             f"市场微观结构显示波动率 {volatility:.4f}、点差 {spread_bps:.2f} bps。"
@@ -604,7 +610,7 @@ def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object], o
         )
     else:
         summary = (
-            f"You selected {pair} ({category}), i.e., {base}/{quote}. {category_explanation.get(category, '')} "
+            f"You selected {pair} ({category}), i.e., {base}/{quote}. {category_explanation_en.get(category, '')} "
             f"Current risk score is {score} ({status}), indicating a {regime}. "
             f"Macro/news stress is {macro_stress:.2f}, sentiment is {sentiment:.2f}, "
             f"and microstructure shows volatility {volatility:.4f} with spread {spread_bps:.2f} bps. "
@@ -612,37 +618,70 @@ def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object], o
         )
 
     strategies: list[str] = []
-    if score >= 75:
-        strategies.append("Regime plan: defensive mode; reduce position size and avoid aggressive entries until score cools below 70.")
-        strategies.append("Entry timing: wait for post-news stabilization (at least one full candle close after major release) and narrowing spread before entry.")
-        strategies.append("Execution rule: avoid entries when spread is expanding rapidly; prefer limit/conditional orders near validated support-resistance retests.")
-        strategies.append("Risk control: use tighter stop-loss (recent swing-based) and partial take-profit on first favorable impulse.")
-        strategies.append("Invalidation: exit quickly if volatility spikes again and price closes beyond your invalidation level.")
-    elif score >= 45:
-        strategies.append("Regime plan: selective mode with smaller leverage and staggered entries.")
-        strategies.append("Entry timing: prioritize pullback/retest entries after trend confirmation, not initial breakout chase.")
-        strategies.append("Execution rule: place conditional orders around key levels and avoid opening new trades right before high-impact events.")
-        strategies.append("Risk control: scale in with 2-3 tranches and trail stop once trade reaches initial reward target.")
-        strategies.append("Invalidation: if spread or realized volatility expands materially, reduce exposure immediately.")
-    else:
-        strategies.append("Regime plan: baseline mode with standard risk limits and periodic monitoring.")
-        strategies.append("Entry timing: enter on planned setup confirmation (breakout-hold or pullback-hold) during liquid session hours.")
-        strategies.append("Execution rule: scale in gradually instead of all-at-once to improve average execution quality.")
-        strategies.append("Risk control: keep pre-defined stop-loss and target levels with minimum reward-to-risk discipline.")
-        strategies.append("Invalidation: close or hedge if a major surprise event shifts the pair into elevated-risk regime.")
+    if output_language == "zh":
+        if score >= 75:
+            strategies.append("策略状态：进入防御模式；在评分回落至 70 以下前降低仓位并避免激进入场。")
+            strategies.append("进场时机：等待重大事件后至少一个完整K线收盘，并确认点差收敛再入场。")
+            strategies.append("执行规则：点差快速走阔时避免开仓；优先在关键位回踩后使用限价/条件单。")
+            strategies.append("风险控制：采用更紧的结构止损（基于近期摆动点），首段盈利后分批止盈。")
+            strategies.append("失效条件：若波动再次急升且价格收盘越过失效位，立即退出。")
+        elif score >= 45:
+            strategies.append("策略状态：选择性参与，降低杠杆并采用分批建仓。")
+            strategies.append("进场时机：优先趋势确认后的回踩入场，避免追首波突破。")
+            strategies.append("执行规则：围绕关键价位布置条件单，避免在高影响事件前新开仓。")
+            strategies.append("风险控制：2-3 批次建仓，达到首个目标后跟踪止损。")
+            strategies.append("失效条件：若点差或实现波动显著放大，立刻降风险敞口。")
+        else:
+            strategies.append("策略状态：基线模式，遵守标准风险限额并做周期复核。")
+            strategies.append("进场时机：仅在交易计划信号确认后（突破站稳或回踩企稳）于高流动时段执行。")
+            strategies.append("执行规则：分批入场优于一次性重仓，以提升平均执行质量。")
+            strategies.append("风险控制：预设止损与止盈，保持最小盈亏比纪律。")
+            strategies.append("失效条件：若突发事件将资产推入更高风险状态，及时平仓或对冲。")
 
-    if category == "Stock":
-        strategies.append("Stock-specific timing: avoid fresh entries just before earnings/FOMC; best entries are after volatility settles and direction confirms.")
-        strategies.append("Stock-specific check: validate sector breadth and index trend before adding single-name exposure.")
-    elif category == "Crypto":
-        strategies.append("Crypto-specific timing: avoid thin-liquidity hours; entries are safer after funding/liquidation stress normalizes.")
-        strategies.append("Crypto-specific check: prioritize deep-liquidity venues and avoid oversized overnight/weekend risk.")
-    elif category == "Commodity":
-        strategies.append("Commodity-specific timing: align entries with inventory data windows and major energy/macro headlines.")
-        strategies.append("Commodity-specific check: confirm term-structure/news direction before adding to winners.")
+        if category == "Stock":
+            strategies.append("股票附加：财报/FOMC 前避免新仓，优先等待波动回落后方向确认。")
+            strategies.append("股票附加：加仓前确认行业广度与指数方向一致。")
+        elif category == "Crypto":
+            strategies.append("加密附加：避开薄流动时段，优先在资金费率/清算压力回归常态后入场。")
+            strategies.append("加密附加：优先深流动性交易场所，控制隔夜与周末风险。")
+        elif category == "Commodity":
+            strategies.append("商品附加：结合库存数据窗口与能源/宏观 headline 安排入场。")
+            strategies.append("商品附加：加仓前确认期限结构与新闻方向一致。")
+        else:
+            strategies.append("外汇附加：避免在央行讲话前抢单，优先公告后的确认走势。")
+            strategies.append("外汇附加：同步监控相对利率预期与 DXY 方向。")
     else:
-        strategies.append("FX-specific timing: avoid entries right into central-bank speeches; favor post-announcement confirmation moves.")
-        strategies.append("FX-specific check: monitor relative rate expectations and DXY trend alignment.")
+        if score >= 75:
+            strategies.append("Regime plan: defensive mode; reduce position size and avoid aggressive entries until score cools below 70.")
+            strategies.append("Entry timing: wait for post-news stabilization (at least one full candle close after major release) and narrowing spread before entry.")
+            strategies.append("Execution rule: avoid entries when spread is expanding rapidly; prefer limit/conditional orders near validated support-resistance retests.")
+            strategies.append("Risk control: use tighter stop-loss (recent swing-based) and partial take-profit on first favorable impulse.")
+            strategies.append("Invalidation: exit quickly if volatility spikes again and price closes beyond your invalidation level.")
+        elif score >= 45:
+            strategies.append("Regime plan: selective mode with smaller leverage and staggered entries.")
+            strategies.append("Entry timing: prioritize pullback/retest entries after trend confirmation, not initial breakout chase.")
+            strategies.append("Execution rule: place conditional orders around key levels and avoid opening new trades right before high-impact events.")
+            strategies.append("Risk control: scale in with 2-3 tranches and trail stop once trade reaches initial reward target.")
+            strategies.append("Invalidation: if spread or realized volatility expands materially, reduce exposure immediately.")
+        else:
+            strategies.append("Regime plan: baseline mode with standard risk limits and periodic monitoring.")
+            strategies.append("Entry timing: enter on planned setup confirmation (breakout-hold or pullback-hold) during liquid session hours.")
+            strategies.append("Execution rule: scale in gradually instead of all-at-once to improve average execution quality.")
+            strategies.append("Risk control: keep pre-defined stop-loss and target levels with minimum reward-to-risk discipline.")
+            strategies.append("Invalidation: close or hedge if a major surprise event shifts the pair into elevated-risk regime.")
+
+        if category == "Stock":
+            strategies.append("Stock-specific timing: avoid fresh entries just before earnings/FOMC; best entries are after volatility settles and direction confirms.")
+            strategies.append("Stock-specific check: validate sector breadth and index trend before adding single-name exposure.")
+        elif category == "Crypto":
+            strategies.append("Crypto-specific timing: avoid thin-liquidity hours; entries are safer after funding/liquidation stress normalizes.")
+            strategies.append("Crypto-specific check: prioritize deep-liquidity venues and avoid oversized overnight/weekend risk.")
+        elif category == "Commodity":
+            strategies.append("Commodity-specific timing: align entries with inventory data windows and major energy/macro headlines.")
+            strategies.append("Commodity-specific check: confirm term-structure/news direction before adding to winners.")
+        else:
+            strategies.append("FX-specific timing: avoid entries right into central-bank speeches; favor post-announcement confirmation moves.")
+            strategies.append("FX-specific check: monitor relative rate expectations and DXY trend alignment.")
 
     return summary, strategies
 
@@ -780,25 +819,29 @@ if "assurance_report" not in st.session_state:
     st.session_state.assurance_report = None
 
 with st.sidebar:
-    st.header("API Settings")
-    api_url = st.text_input("Analyze endpoint", value=API_URL)
+    st.header("API Settings" if UI_LANG == "en" else "API 设置")
+    api_url = st.text_input("Analyze endpoint" if UI_LANG == "en" else "分析接口", value=API_URL)
     normalized_api_url = normalize_analyze_url(api_url)
     if normalized_api_url != api_url.strip():
-        st.info(f"Legacy endpoint detected; auto-using: {normalized_api_url}")
-    api_key = st.text_input("API Key (optional)", value=API_KEY, type="password")
+        st.info(
+            f"Legacy endpoint detected; auto-using: {normalized_api_url}"
+            if UI_LANG == "en"
+            else f"检测到旧接口地址，已自动切换为: {normalized_api_url}"
+        )
+    api_key = st.text_input("API Key (optional)" if UI_LANG == "en" else "API Key（可选）", value=API_KEY, type="password")
     is_healthy, health_url = check_backend_health(normalized_api_url, api_key)
     if is_healthy:
-        st.success(f"Backend OK: {health_url}")
+        st.success(f"Backend OK: {health_url}" if UI_LANG == "en" else f"后端可用: {health_url}")
     else:
-        st.warning(f"Backend unreachable: {health_url}")
-    auto_refresh = st.toggle("Auto refresh leaderboard", value=False)
-    refresh_seconds = st.slider("Refresh interval (sec)", min_value=15, max_value=120, value=30, step=5)
+        st.warning(f"Backend unreachable: {health_url}" if UI_LANG == "en" else f"后端不可达: {health_url}")
+    auto_refresh = st.toggle("Auto refresh leaderboard" if UI_LANG == "en" else "自动刷新排行榜", value=False)
+    refresh_seconds = st.slider("Refresh interval (sec)" if UI_LANG == "en" else "刷新间隔（秒）", min_value=15, max_value=120, value=30, step=5)
     cooperative_sharing_enabled = st.toggle(
-        "Share anonymized risk signals to cooperative pool",
+        "Share anonymized risk signals to cooperative pool" if UI_LANG == "en" else "共享匿名风险信号到协作池",
         value=False,
-        help="Only aggregated/anonymous risk signals are shared.",
+        help="Only aggregated/anonymous risk signals are shared." if UI_LANG == "en" else "仅共享聚合后的匿名风险信号。",
     )
-    source_region = st.text_input("Signal region tag (optional)", value="MY")
+    source_region = st.text_input("Signal region tag (optional)" if UI_LANG == "en" else "信号区域标签（可选）", value="MY")
 
 tab_board, tab_analyze, tab_history, tab_assurance, tab_usage = st.tabs(
     [
@@ -811,24 +854,32 @@ tab_board, tab_analyze, tab_history, tab_assurance, tab_usage = st.tabs(
 )
 
 with tab_board:
-    st.subheader("Top Risk Board (Forex + Commodity + Crypto + Stocks)")
-    refresh_now = st.button("Refresh Board", type="primary")
+    st.subheader("Top Risk Board (Forex + Commodity + Crypto + Stocks)" if UI_LANG == "en" else "高风险看板（外汇+商品+加密+股票）")
+    refresh_now = st.button("Refresh Board" if UI_LANG == "en" else "刷新看板", type="primary")
     if refresh_now or st.session_state.leaderboard_cache is None:
         try:
-            with st.spinner("Loading multi-asset risk board..."):
+            with st.spinner("Loading multi-asset risk board..." if UI_LANG == "en" else "正在加载多资产风险看板..."):
                 st.session_state.leaderboard_cache = call_top_pairs_api(
                     api_url=normalized_api_url,
                     api_key=api_key,
                     limit=200,
                 )
         except requests.RequestException as exc:
-            st.error(f"Failed to fetch leaderboard: {exc}")
+            st.error(f"Failed to fetch leaderboard: {exc}" if UI_LANG == "en" else f"获取排行榜失败: {exc}")
 
     board = st.session_state.leaderboard_cache or {}
-    st.caption(f"Scan date: {board.get('scan_date')}")
-    st.caption(f"Latest leaderboard update (UTC): {board.get('latest_update_utc')}")
+    st.caption(f"Scan date: {board.get('scan_date')}" if UI_LANG == "en" else f"扫描日期: {board.get('scan_date')}")
+    st.caption(
+        f"Latest leaderboard update (UTC): {board.get('latest_update_utc')}"
+        if UI_LANG == "en"
+        else f"排行榜最新更新时间 (UTC): {board.get('latest_update_utc')}"
+    )
     if board.get("requested_limit") and int(board.get("requested_limit", 0)) < 200:
-        st.caption(f"Leaderboard fallback mode: loaded with limit={board.get('requested_limit')} to avoid timeout.")
+        st.caption(
+            f"Leaderboard fallback mode: loaded with limit={board.get('requested_limit')} to avoid timeout."
+            if UI_LANG == "en"
+            else f"排行榜降级模式：为避免超时，当前加载上限为 limit={board.get('requested_limit')}。"
+        )
     rankings = board.get("rankings", [])
     if rankings:
         rows = []
@@ -850,15 +901,15 @@ with tab_board:
             )
 
         filter_col_1, filter_col_2, filter_col_3, filter_col_4, filter_col_5 = st.columns(5)
-        if filter_col_1.button("All", use_container_width=True):
+        if filter_col_1.button("All" if UI_LANG == "en" else "全部", use_container_width=True):
             st.session_state.asset_filter = "All"
-        if filter_col_2.button("Forex", use_container_width=True):
+        if filter_col_2.button("Forex" if UI_LANG == "en" else "外汇", use_container_width=True):
             st.session_state.asset_filter = "Forex"
-        if filter_col_3.button("Commodity", use_container_width=True):
+        if filter_col_3.button("Commodity" if UI_LANG == "en" else "商品", use_container_width=True):
             st.session_state.asset_filter = "Commodity"
-        if filter_col_4.button("Crypto", use_container_width=True):
+        if filter_col_4.button("Crypto" if UI_LANG == "en" else "加密", use_container_width=True):
             st.session_state.asset_filter = "Crypto"
-        if filter_col_5.button("Stock", use_container_width=True):
+        if filter_col_5.button("Stock" if UI_LANG == "en" else "股票", use_container_width=True):
             st.session_state.asset_filter = "Stock"
 
         filtered_rows = (
@@ -873,13 +924,17 @@ with tab_board:
         crypto_count = sum(1 for row in filtered_rows if row["category"] == "Crypto")
         stock_count = sum(1 for row in filtered_rows if row["category"] == "Stock")
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Assets Shown", total_count, st.session_state.asset_filter)
-        c2.metric("Forex", forex_count)
-        c3.metric("Commodity", commodity_count)
-        c4.metric("Crypto", crypto_count)
-        c5.metric("Stock", stock_count)
+        c1.metric("Assets Shown" if UI_LANG == "en" else "资产数量", total_count, st.session_state.asset_filter)
+        c2.metric("Forex" if UI_LANG == "en" else "外汇", forex_count)
+        c3.metric("Commodity" if UI_LANG == "en" else "商品", commodity_count)
+        c4.metric("Crypto" if UI_LANG == "en" else "加密", crypto_count)
+        c5.metric("Stock" if UI_LANG == "en" else "股票", stock_count)
 
-        st.caption(f"Showing {len(filtered_rows)} assets in current filter")
+        st.caption(
+            f"Showing {len(filtered_rows)} assets in current filter"
+            if UI_LANG == "en"
+            else f"当前筛选下显示 {len(filtered_rows)} 个资产"
+        )
         st.dataframe(
             filtered_rows,
             use_container_width=True,
@@ -900,7 +955,7 @@ with tab_board:
             ]
         )
         if not heat_df.empty:
-            st.markdown("### Risk Heat Map")
+            st.markdown("### Risk Heat Map" if UI_LANG == "en" else "### 风险热力图")
             heat_fig = px.density_heatmap(
                 heat_df,
                 x="category",
@@ -908,12 +963,12 @@ with tab_board:
                 z="score",
                 histfunc="avg",
                 color_continuous_scale="YlOrRd",
-                title="Average Risk Score by Asset Category and Risk Status",
+                title="Average Risk Score by Asset Category and Risk Status" if UI_LANG == "en" else "按资产类别与风险状态的平均风险分数",
             )
             heat_fig.update_layout(height=360)
             st.plotly_chart(heat_fig, use_container_width=True)
 
-            st.markdown("### Stress Test Simulator")
+            st.markdown("### Stress Test Simulator" if UI_LANG == "en" else "### 压力测试模拟器")
             scenario_map = {
                 "Custom": {
                     "mult": 1.0,
@@ -1066,38 +1121,48 @@ with tab_board:
             tooltip_scenario = scenario_map.get(selected_for_tooltip, scenario_map["2008 Global Financial Crisis"])
             sim_col_1, sim_col_2, sim_col_3 = st.columns(3)
             scenario_name = sim_col_1.selectbox(
-                "Scenario",
+                "Scenario" if UI_LANG == "en" else "情景",
                 list(scenario_map.keys()),
                 index=list(scenario_map.keys()).index(selected_for_tooltip) if selected_for_tooltip in scenario_map else 1,
                 key="stress_scenario_selector",
                 help=_scenario_tooltip_text(tooltip_scenario),
             )
             scenario_intensity = sim_col_2.slider(
-                "Scenario intensity",
+                "Scenario intensity" if UI_LANG == "en" else "情景强度",
                 min_value=0.5,
                 max_value=2.0,
                 value=1.0,
                 step=0.05,
-                help="0.5 = half shock, 1.0 = baseline historical shock, 2.0 = double shock severity.",
+                help=(
+                    "0.5 = half shock, 1.0 = baseline historical shock, 2.0 = double shock severity."
+                    if UI_LANG == "en"
+                    else "0.5 = 半强度冲击，1.0 = 历史基准冲击，2.0 = 双倍冲击强度。"
+                ),
             )
-            show_top_n = sim_col_3.slider("Top impacted assets", min_value=5, max_value=30, value=10, step=1)
+            show_top_n = sim_col_3.slider(
+                "Top impacted assets" if UI_LANG == "en" else "显示受影响最大的资产",
+                min_value=5,
+                max_value=30,
+                value=10,
+                step=1,
+            )
 
             scenario = scenario_map[scenario_name]
             st.markdown(
                 (
                     f"<div style='margin: 0.35rem 0 0.6rem 0; padding: 0.55rem 0.8rem; border-radius: 8px; "
                     f"background: {scenario['engine_color']}; color: #FFFFFF; font-weight: 700; letter-spacing: 0.2px;'>"
-                    f"Test Engine · {scenario_name} · {scenario['period']}"
+                    f"{'Test Engine' if UI_LANG == 'en' else '测试引擎'} · {scenario_name} · {scenario['period']}"
                     "</div>"
                 ),
                 unsafe_allow_html=True,
             )
 
-            with st.expander("Test Engine", expanded=False):
+            with st.expander("Test Engine" if UI_LANG == "en" else "测试引擎", expanded=False):
                 st.markdown("#### Why this calculation" if UI_LANG == "en" else "#### 为什么这样计算")
                 st.markdown(
                     (
--                    """
+                        """
 - Engine uses two shock components to avoid underfitting or overfitting one-dimensional stress:
   1) `scenario_multiplier` captures volatility-regime escalation,
   2) `scenario_additive_shock` captures liquidity/contagion premium not explained by baseline score scaling alone.
@@ -1209,15 +1274,15 @@ with tab_board:
                 stressed_fig.update_layout(height=360)
                 st.plotly_chart(stressed_fig, use_container_width=True)
     else:
-        st.info("No rankings available yet.")
+        st.info("No rankings available yet." if UI_LANG == "en" else "暂无排行榜数据。")
 
 with tab_analyze:
-    st.subheader("Analyze Pair Risk")
+    st.subheader("Analyze Pair Risk" if UI_LANG == "en" else "资产对风险分析")
     with st.form("analyze_forex_form"):
         col1, col2 = st.columns(2)
         with col1:
             pair_preset = st.selectbox(
-                "Pair Preset",
+                "Pair Preset" if UI_LANG == "en" else "资产对预设",
                 options=[
                     "USD/MYR",
                     "EUR/USD",
@@ -1310,15 +1375,15 @@ with tab_analyze:
                 index=0,
             )
             preset_base, preset_quote = (pair_preset.split("/") if pair_preset != "Custom" else ("USD", "MYR"))
-            base_currency = st.text_input("Base Currency", value=preset_base)
-            quote_currency = st.text_input("Quote Currency", value=preset_quote)
+            base_currency = st.text_input("Base Currency" if UI_LANG == "en" else "基础资产", value=preset_base)
+            quote_currency = st.text_input("Quote Currency" if UI_LANG == "en" else "计价资产", value=preset_quote)
         with col2:
             timestamp = st.text_input(
-                "Timestamp (ISO8601, Malaysia TZ)",
+                "Timestamp (ISO8601, Malaysia TZ)" if UI_LANG == "en" else "时间戳（ISO8601，马来西亚时区）",
                 value=datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).isoformat(timespec="seconds"),
             )
 
-        submitted = st.form_submit_button("Analyze Forex Risk")
+        submitted = st.form_submit_button("Analyze Forex Risk" if UI_LANG == "en" else "分析外汇风险")
 
     if submitted:
         st.session_state.pending_analysis = {
@@ -1690,15 +1755,15 @@ with tab_history:
         st.info("No forex risk events yet. Submit analysis to build timeline.")
 
 with tab_assurance:
-    st.subheader("AI Assurance (NIST/OECD) + Regulatory Audit")
-    st.markdown("### NIST AI RMF Self-Assessment")
+    st.subheader("AI Assurance (NIST/OECD) + Regulatory Audit" if UI_LANG == "en" else "AI 保障（NIST/OECD）与监管审计")
+    st.markdown("### NIST AI RMF Self-Assessment" if UI_LANG == "en" else "### NIST AI RMF 自评")
     n_col_1, n_col_2, n_col_3, n_col_4 = st.columns(4)
     nist_govern = n_col_1.slider("GOVERN", min_value=0, max_value=100, value=62, step=1)
     nist_map = n_col_2.slider("MAP", min_value=0, max_value=100, value=58, step=1)
     nist_measure = n_col_3.slider("MEASURE", min_value=0, max_value=100, value=61, step=1)
     nist_manage = n_col_4.slider("MANAGE", min_value=0, max_value=100, value=59, step=1)
 
-    st.markdown("### OECD AI Principles Alignment")
+    st.markdown("### OECD AI Principles Alignment" if UI_LANG == "en" else "### OECD AI 原则对齐")
     o_col_1, o_col_2, o_col_3, o_col_4, o_col_5 = st.columns(5)
     oecd_transparency = o_col_1.slider("Transparency", min_value=0, max_value=100, value=64, step=1)
     oecd_robustness = o_col_2.slider("Robustness", min_value=0, max_value=100, value=63, step=1)
@@ -1711,19 +1776,21 @@ with tab_assurance:
     assurance_score = round((nist_score * 0.55) + (oecd_score * 0.45), 2)
 
     a_col_1, a_col_2, a_col_3 = st.columns(3)
-    a_col_1.metric("NIST RMF Score", nist_score)
-    a_col_2.metric("OECD Principles Score", oecd_score)
-    a_col_3.metric("AI Assurance Composite", assurance_score)
+    a_col_1.metric("NIST RMF Score" if UI_LANG == "en" else "NIST RMF 分数", nist_score)
+    a_col_2.metric("OECD Principles Score" if UI_LANG == "en" else "OECD 原则分数", oecd_score)
+    a_col_3.metric("AI Assurance Composite" if UI_LANG == "en" else "AI 保障综合分", assurance_score)
 
     if assurance_score >= 75:
-        assurance_level = "Strong"
+        assurance_level = "Strong" if UI_LANG == "en" else "强"
     elif assurance_score >= 55:
-        assurance_level = "Moderate"
+        assurance_level = "Moderate" if UI_LANG == "en" else "中等"
     else:
-        assurance_level = "Needs Improvement"
+        assurance_level = "Needs Improvement" if UI_LANG == "en" else "需改进"
 
     st.caption(
         "AI Assurance positioning: converts compliance from cost center to premium assurance service for regulated clients."
+        if UI_LANG == "en"
+        else "AI 保障定位：将合规从成本中心转化为面向受监管客户的高价值保障服务。"
     )
 
     report_payload = {
@@ -1754,22 +1821,22 @@ with tab_assurance:
     }
 
     st.download_button(
-        "Download AI Assurance Report (JSON)",
+        "Download AI Assurance Report (JSON)" if UI_LANG == "en" else "下载 AI 保障报告（JSON）",
         data=json.dumps(report_payload, ensure_ascii=False, indent=2),
         file_name="riskguard_ai_assurance_report.json",
         mime="application/json",
     )
 
-    st.markdown("### API Subscription Mode (Webhook)")
+    st.markdown("### API Subscription Mode (Webhook)" if UI_LANG == "en" else "### API 订阅模式（Webhook）")
     s_col_1, s_col_2 = st.columns(2)
-    webhook_url = s_col_1.text_input("Webhook URL", value="")
-    webhook_secret = s_col_2.text_input("Webhook Secret (optional)", value="", type="password")
+    webhook_url = s_col_1.text_input("Webhook URL" if UI_LANG == "en" else "Webhook 地址", value="")
+    webhook_secret = s_col_2.text_input("Webhook Secret (optional)" if UI_LANG == "en" else "Webhook 密钥（可选）", value="", type="password")
     webhook_events = st.multiselect(
-        "Events",
+        "Events" if UI_LANG == "en" else "事件",
         options=["risk.forex.analyzed", "risk.subscription.test"],
         default=["risk.forex.analyzed"],
     )
-    if st.button("Save Webhook Subscription", type="primary"):
+    if st.button("Save Webhook Subscription" if UI_LANG == "en" else "保存 Webhook 订阅", type="primary"):
         if webhook_url.strip():
             try:
                 save_result = call_ops_post(
@@ -1784,11 +1851,15 @@ with tab_assurance:
                         "description": "Saved via Streamlit assurance tab",
                     },
                 )
-                st.success(f"Subscription saved: id={save_result.get('subscription_id')}")
+                st.success(
+                    f"Subscription saved: id={save_result.get('subscription_id')}"
+                    if UI_LANG == "en"
+                    else f"订阅保存成功: id={save_result.get('subscription_id')}"
+                )
             except requests.RequestException as exc:
-                st.error(f"Failed to save subscription: {exc}")
+                st.error(f"Failed to save subscription: {exc}" if UI_LANG == "en" else f"保存订阅失败: {exc}")
         else:
-            st.warning("Webhook URL is required.")
+            st.warning("Webhook URL is required." if UI_LANG == "en" else "Webhook 地址不能为空。")
 
     try:
         subscriptions_payload = call_ops_get(
@@ -1798,9 +1869,9 @@ with tab_assurance:
         )
         st.dataframe(subscriptions_payload.get("subscriptions", []), use_container_width=True)
     except requests.RequestException as exc:
-        st.info(f"Subscriptions unavailable: {exc}")
+        st.info(f"Subscriptions unavailable: {exc}" if UI_LANG == "en" else f"订阅数据暂不可用: {exc}")
 
-    st.markdown("### Cooperative Risk Model Summary")
+    st.markdown("### Cooperative Risk Model Summary" if UI_LANG == "en" else "### 协作风险模型摘要")
     try:
         cooperative_summary = call_ops_get(
             api_url=normalized_api_url,
@@ -1808,17 +1879,17 @@ with tab_assurance:
             path="/ops/cooperative-risk/summary",
         )
         c_sum_1, c_sum_2, c_sum_3 = st.columns(3)
-        c_sum_1.metric("Shared Signals (30d)", cooperative_summary.get("total_shared_signals", 0))
-        c_sum_2.metric("Avg Shared Score", cooperative_summary.get("avg_shared_score", 0))
-        c_sum_3.metric("High-Risk Shared", cooperative_summary.get("high_risk_shared_count", 0))
-        st.write("Top Shared Pairs")
+        c_sum_1.metric("Shared Signals (30d)" if UI_LANG == "en" else "30天共享信号", cooperative_summary.get("total_shared_signals", 0))
+        c_sum_2.metric("Avg Shared Score" if UI_LANG == "en" else "共享均分", cooperative_summary.get("avg_shared_score", 0))
+        c_sum_3.metric("High-Risk Shared" if UI_LANG == "en" else "高风险共享数", cooperative_summary.get("high_risk_shared_count", 0))
+        st.write("Top Shared Pairs" if UI_LANG == "en" else "高频共享资产对")
         st.dataframe(cooperative_summary.get("top_pairs", []), use_container_width=True)
-        st.write("Category Distribution")
+        st.write("Category Distribution" if UI_LANG == "en" else "类别分布")
         st.dataframe(cooperative_summary.get("category_distribution", []), use_container_width=True)
     except requests.RequestException as exc:
-        st.info(f"Cooperative summary unavailable: {exc}")
+        st.info(f"Cooperative summary unavailable: {exc}" if UI_LANG == "en" else f"协作模型摘要暂不可用: {exc}")
 
-    st.markdown("### Immutable Audit Trail")
+    st.markdown("### Immutable Audit Trail" if UI_LANG == "en" else "### 不可篡改审计链")
     try:
         audit_payload = call_ops_get(
             api_url=normalized_api_url,
@@ -1829,16 +1900,24 @@ with tab_assurance:
         audit_rows = audit_payload.get("rows", [])
         st.caption(
             "Tamper-evident chain fields: each row links to previous row via prev_hash and entry_hash for traceability."
+            if UI_LANG == "en"
+            else "防篡改链字段说明：每条记录通过 prev_hash 与 entry_hash 与上一条关联，用于可追溯审计。"
         )
         st.dataframe(audit_rows, use_container_width=True)
     except requests.RequestException as exc:
-        st.info(f"Audit trail unavailable: {exc}")
+        st.info(f"Audit trail unavailable: {exc}" if UI_LANG == "en" else f"审计链暂不可用: {exc}")
 
 with tab_usage:
-    st.subheader("RiskGuard Usage Guide")
-    st.caption(f"Guide last updated: {USAGE_GUIDE_LAST_UPDATED}")
+    st.subheader("RiskGuard Usage Guide" if UI_LANG == "en" else "RiskGuard 使用指南")
+    st.caption(
+        f"Guide last updated: {USAGE_GUIDE_LAST_UPDATED}"
+        if UI_LANG == "en"
+        else f"指南最近更新: {USAGE_GUIDE_LAST_UPDATED}"
+    )
     st.info(
         "Maintenance rule: when new features/endpoint changes are released, update `USAGE_GUIDE_CHANGELOG` and this guide section in the same commit."
+        if UI_LANG == "en"
+        else "维护规则：每次发布新功能或接口变更时，需在同一提交中同步更新 `USAGE_GUIDE_CHANGELOG` 与本指南内容。"
     )
 
     st.markdown("### Quick Start")
