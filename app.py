@@ -1920,7 +1920,7 @@ with tab_usage:
         else "维护规则：每次发布新功能或接口变更时，需在同一提交中同步更新 `USAGE_GUIDE_CHANGELOG` 与本指南内容。"
     )
 
-    st.markdown("### Quick Start")
+    st.markdown("### Quick Start" if UI_LANG == "en" else "### 快速开始")
     st.markdown(
         """
 1. Set backend analyze endpoint and API key in sidebar.
@@ -1928,9 +1928,16 @@ with tab_usage:
 3. Use `Analyze One Asset Pair` for deep analysis, AI summary, strategy, ES/EWMA/AML diagnostics.
 4. Use `AI Assurance & Audit` to generate compliance reports, manage webhook subscriptions, and inspect audit chains.
         """
+        if UI_LANG == "en"
+        else """
+1. 在左侧边栏设置分析接口地址与 API Key。
+2. 使用 `多资产实时看板` 监控高风险资产并进行压力测试模拟。
+3. 使用 `单一资产对分析` 获取深度分析、AI 摘要与 ES/EWMA/AML 指标诊断。
+4. 使用 `AI 保障与审计` 生成合规报告、管理 webhook 订阅并查看审计链。
+        """
     )
 
-    st.markdown("### Core Tabs")
+    st.markdown("### Core Tabs" if UI_LANG == "en" else "### 核心页面")
     st.markdown(
         """
 - `Live Multi-Asset Board`: Filter assets by category, inspect scores, run heat map and scenario stress tests.
@@ -1938,9 +1945,16 @@ with tab_usage:
 - `Risk History Timeline`: Review historical score path and key model indicators over time.
 - `AI Assurance & Audit`: NIST/OECD self-assessment, webhook setup, cooperative model summary, immutable audit trail.
         """
+        if UI_LANG == "en"
+        else """
+    - `多资产实时看板`：按类别筛选资产、查看风险分数并运行热力图与情景压力测试。
+    - `单一资产对分析`：基于自动调参的市场/新闻信号进行深度分析并生成 AI 摘要。
+    - `风险历史时间线`：回顾风险分数路径与核心模型指标变化。
+    - `AI 保障与审计`：进行 NIST/OECD 自评、Webhook 管理、协作模型摘要和审计链查看。
+        """
     )
 
-    st.markdown("### API-First Endpoints")
+    st.markdown("### API-First Endpoints" if UI_LANG == "en" else "### API 优先接口")
     st.code(
         """GET  /health
 POST /analyze-forex-risk
@@ -1956,38 +1970,56 @@ POST /api/v1/subscriptions/{subscription_id}/test""",
         language="text",
     )
 
-    st.markdown("### Radar Hover Interpretation")
+    st.markdown("### Radar Hover Interpretation" if UI_LANG == "en" else "### 雷达图悬浮解释")
     st.markdown(
         """
 - Hover each radar axis to see: `含义` (what it measures), `作用` (risk impact), `怎么看` (decision guideline).
 - Higher `Tail Loss (ES95)` means larger expected loss in extreme tail scenarios.
 - Higher `AML Chain` and `Contagion Path` imply stronger indirect transmission risk across connected assets.
         """
+        if UI_LANG == "en"
+        else """
+- 将鼠标悬停在雷达图各轴可查看：`含义`（测量内容）、`作用`（风险影响）、`怎么看`（决策建议）。
+- `Tail Loss (ES95)` 越高，表示极端尾部情景下的预期损失越大。
+- `AML Chain` 与 `Contagion Path` 越高，表示跨资产间接传导风险越强。
+        """
     )
 
-    st.markdown("### Invalid Asset Code Handling")
+    st.markdown("### Invalid Asset Code Handling" if UI_LANG == "en" else "### 无效资产代码处理")
     st.markdown(
         """
 - If asset mapping confidence is low (for example `abcdefghi/USD`), analysis is paused.
 - User must confirm category and suggested symbol first.
 - System then auto-adjusts to a valid Forex/Stock/Commodity/Crypto symbol before analysis.
         """
+        if UI_LANG == "en"
+        else """
+- 当资产映射置信度过低（例如 `abcdefghi/USD`）时，系统会暂停分析。
+- 用户需先确认资产类别与建议代码。
+- 系统会在分析前自动校正为有效的外汇/股票/商品/加密资产代码。
+        """
     )
 
-    st.markdown("### Cooperative Risk Model")
+    st.markdown("### Cooperative Risk Model" if UI_LANG == "en" else "### 协作风险模型")
     st.markdown(
         """
 - Enable `Share anonymized risk signals to cooperative pool` in sidebar.
 - Only aggregated anonymous indicators are shared (no user identity or raw transaction details).
 - Use cooperative summary in Assurance tab to view network-effect intelligence.
         """
+        if UI_LANG == "en"
+        else """
+- 在边栏开启 `共享匿名风险信号到协作池`。
+- 仅共享聚合后的匿名指标（不包含用户身份和原始交易明细）。
+- 在保障页面查看协作模型摘要以获得网络效应情报。
+        """
     )
 
-    st.markdown("### Recent Updates")
+    st.markdown("### Recent Updates" if UI_LANG == "en" else "### 最近更新")
     for idx, note in enumerate(USAGE_GUIDE_CHANGELOG, start=1):
         st.write(f"{idx}. {note}")
 
-    st.markdown("### Stress Test Methodology")
+    st.markdown("### Stress Test Methodology" if UI_LANG == "en" else "### 压力测试方法")
     st.markdown(
         """
 - Baseline input is model-generated `base_score` (0-100) from current ES/EWMA/AML-aware risk engine.
@@ -1998,16 +2030,34 @@ POST /api/v1/subscriptions/{subscription_id}/test""",
 - Final score uses bounded transformation:
     `stressed_score = clamp((base_score * multiplier + additive) * intensity, 0, 100)`.
 - Preset calibration is anchored to stylized historical facts (crisis-period volatility/spread widening patterns), and is intended for decision support, not exact PnL forecasting.
-        """
+                """
+                if UI_LANG == "en"
+                else """
+- 基线输入为当前 ES/EWMA/AML 风险引擎生成的 `base_score`（0-100）。
+- 场景预设包含两类校准冲击项：
+  1) 乘数冲击（`scenario_multiplier`）用于反映波动率状态切换放大；
+  2) 加数冲击（`scenario_additive_shock`）用于反映流动性/传染溢出。
+- 用户通过 `intensity` 回放更弱或更强的历史冲击版本。
+- 最终分数使用有界变换：
+  `stressed_score = clamp((base_score * multiplier + additive) * intensity, 0, 100)`。
+- 场景校准锚定于历史风格化事实（危机期间波动率与点差走阔特征），用于决策支持而非精确收益预测。
+                """
     )
 
-    st.markdown("### Stress Table Tooltip Guide")
+    st.markdown("### Stress Table Tooltip Guide" if UI_LANG == "en" else "### 压力表格提示说明")
     st.markdown(
         """
 - Hover the `?` icon on `base_score`, `delta`, and `stressed_score` column headers for on-demand definitions.
 - `base_score`: current pre-stress model baseline risk.
 - `delta`: incremental scenario impact (`stressed_score - base_score`).
 - `stressed_score`: final stress-adjusted risk after calibrated scenario replay.
+        """
+        if UI_LANG == "en"
+        else """
+- 将鼠标悬停在 `base_score`、`delta`、`stressed_score` 列头的 `?` 图标上可查看定义。
+- `base_score`：压力回放前的模型基线风险。
+- `delta`：情景增量影响（`stressed_score - base_score`）。
+- `stressed_score`：应用场景校准后得到的最终压力风险分。
         """
     )
 
