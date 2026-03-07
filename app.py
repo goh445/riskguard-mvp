@@ -21,6 +21,16 @@ API_KEY = os.getenv("BACKEND_API_KEY", "")
 UI_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
 UI_GEMINI_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-2.5-flash")
 
+USAGE_GUIDE_LAST_UPDATED = "2026-03-07"
+USAGE_GUIDE_CHANGELOG = [
+    "Added AI Assurance tab (NIST AI RMF + OECD self-assessment template and downloadable report).",
+    "Added API subscription mode with webhook endpoint management and test trigger.",
+    "Added stress test simulator and risk heat map for portfolio impact demonstration.",
+    "Added tamper-evident audit trail view with hash-chain fields (prev_hash/entry_hash).",
+    "Added ES/EWMA/AML metrics and interactive risk radar with hover explanations.",
+    "Added low-confidence asset confirmation flow to avoid analyzing invalid symbols directly.",
+]
+
 COMMODITY_BASES = {
     "XAU", "XAG", "XPT", "XPD", "XBR", "XWT", "XCU", "XNG", "XRB", "XHO", "XKC", "XSU", "XCC",
     "XCT", "XOJ", "XWH", "XCN", "XSO", "XSM", "XSL", "XLE", "XHE", "XFE", "XAL", "XPB", "XUR",
@@ -728,12 +738,13 @@ with st.sidebar:
     )
     source_region = st.text_input("Signal region tag (optional)", value="MY")
 
-tab_board, tab_analyze, tab_history, tab_assurance = st.tabs(
+tab_board, tab_analyze, tab_history, tab_assurance, tab_usage = st.tabs(
     [
         "Live Multi-Asset Board",
         "Analyze One Asset Pair",
         "Risk History Timeline",
         "AI Assurance & Audit",
+        "Usage Guide",
     ]
 )
 
@@ -1511,6 +1522,80 @@ with tab_assurance:
         st.dataframe(audit_rows, use_container_width=True)
     except requests.RequestException as exc:
         st.info(f"Audit trail unavailable: {exc}")
+
+with tab_usage:
+    st.subheader("RiskGuard Usage Guide")
+    st.caption(f"Guide last updated: {USAGE_GUIDE_LAST_UPDATED}")
+    st.info(
+        "Maintenance rule: when new features/endpoint changes are released, update `USAGE_GUIDE_CHANGELOG` and this guide section in the same commit."
+    )
+
+    st.markdown("### Quick Start")
+    st.markdown(
+        """
+1. Set backend analyze endpoint and API key in sidebar.
+2. Use `Live Multi-Asset Board` to monitor top-risk assets and run stress simulation.
+3. Use `Analyze One Asset Pair` for deep analysis, AI summary, strategy, ES/EWMA/AML diagnostics.
+4. Use `AI Assurance & Audit` to generate compliance reports, manage webhook subscriptions, and inspect audit chains.
+        """
+    )
+
+    st.markdown("### Core Tabs")
+    st.markdown(
+        """
+- `Live Multi-Asset Board`: Filter assets by category, inspect scores, run heat map and scenario stress tests.
+- `Analyze One Asset Pair`: Analyze selected pair with auto-tuned market/news signals and AI-generated summary.
+- `Risk History Timeline`: Review historical score path and key model indicators over time.
+- `AI Assurance & Audit`: NIST/OECD self-assessment, webhook setup, cooperative model summary, immutable audit trail.
+        """
+    )
+
+    st.markdown("### API-First Endpoints")
+    st.code(
+        """GET  /health
+POST /analyze-forex-risk
+POST /api/v1/risk/forex
+GET  /ops/top-risk-pairs?limit=200&force_refresh=false
+GET  /ops/audit-trail?limit=100
+POST /ops/cooperative-risk/share
+GET  /ops/cooperative-risk/summary
+POST /api/v1/subscriptions
+GET  /api/v1/subscriptions
+DELETE /api/v1/subscriptions/{subscription_id}
+POST /api/v1/subscriptions/{subscription_id}/test""",
+        language="text",
+    )
+
+    st.markdown("### Radar Hover Interpretation")
+    st.markdown(
+        """
+- Hover each radar axis to see: `含义` (what it measures), `作用` (risk impact), `怎么看` (decision guideline).
+- Higher `Tail Loss (ES95)` means larger expected loss in extreme tail scenarios.
+- Higher `AML Chain` and `Contagion Path` imply stronger indirect transmission risk across connected assets.
+        """
+    )
+
+    st.markdown("### Invalid Asset Code Handling")
+    st.markdown(
+        """
+- If asset mapping confidence is low (for example `abcdefghi/USD`), analysis is paused.
+- User must confirm category and suggested symbol first.
+- System then auto-adjusts to a valid Forex/Stock/Commodity/Crypto symbol before analysis.
+        """
+    )
+
+    st.markdown("### Cooperative Risk Model")
+    st.markdown(
+        """
+- Enable `Share anonymized risk signals to cooperative pool` in sidebar.
+- Only aggregated anonymous indicators are shared (no user identity or raw transaction details).
+- Use cooperative summary in Assurance tab to view network-effect intelligence.
+        """
+    )
+
+    st.markdown("### Recent Updates")
+    for idx, note in enumerate(USAGE_GUIDE_CHANGELOG, start=1):
+        st.write(f"{idx}. {note}")
 
 if auto_refresh:
     time.sleep(refresh_seconds)
