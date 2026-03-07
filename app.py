@@ -21,6 +21,40 @@ API_KEY = os.getenv("BACKEND_API_KEY", "")
 UI_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
 UI_GEMINI_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-2.5-flash")
 
+TRANSLATIONS: dict[str, dict[str, str]] = {
+    "language_label": {"en": "Language", "zh": "语言"},
+    "language_english": {"en": "English", "zh": "英文"},
+    "language_chinese": {"en": "Chinese", "zh": "中文"},
+    "app_title": {"en": "RiskGuard MVP - Global Forex Fraud Detection & Risk Scoring", "zh": "RiskGuard MVP - 全球外汇欺诈检测与风险评分"},
+    "app_caption": {"en": "Latest UI refresh (UTC): {timestamp}", "zh": "最新界面刷新时间 (UTC): {timestamp}"},
+    "app_info": {
+        "en": "AI auto-tuning is always ON: dynamic global news discovery + market data are automatically used in every analysis.",
+        "zh": "AI 自动调参始终开启：每次分析都会自动使用全球新闻发现与市场数据。",
+    },
+    "tab_board": {"en": "Live Multi-Asset Board", "zh": "多资产实时看板"},
+    "tab_analyze": {"en": "Analyze One Asset Pair", "zh": "单一资产对分析"},
+    "tab_history": {"en": "Risk History Timeline", "zh": "风险历史时间线"},
+    "tab_assurance": {"en": "AI Assurance & Audit", "zh": "AI 保障与审计"},
+    "tab_usage": {"en": "Usage Guide", "zh": "使用指南"},
+    "stress_bar_title": {"en": "Stress Scenario Impact (Stressed Score)", "zh": "压力情景影响（压力后评分）"},
+    "stress_hover": {
+        "en": "<b>%{x}</b><br>Stressed Score: %{y:.2f} (higher means higher risk)<br>Base Score: %{customdata[0]:.2f} (current baseline risk)<br>Delta: %{customdata[1]:.2f} (scenario incremental shock)<extra></extra>",
+        "zh": "<b>%{x}</b><br>压力后评分: %{y:.2f}（越高风险越高）<br>基准评分: %{customdata[0]:.2f}（当前基线风险）<br>增量: %{customdata[1]:.2f}（情景冲击增量）<extra></extra>",
+    },
+    "radar_meaning": {"en": "Meaning", "zh": "含义"},
+    "radar_impact": {"en": "Impact", "zh": "作用"},
+    "radar_how": {"en": "How to read", "zh": "怎么看"},
+    "radar_norm": {"en": "Normalized Score", "zh": "标准化评分"},
+    "ai_summary": {"en": "AI Summary", "zh": "AI 摘要"},
+    "ai_strategy": {"en": "Investment Strategy", "zh": "投资策略"},
+}
+
+
+def t(key: str, lang: str, **kwargs: object) -> str:
+    entry = TRANSLATIONS.get(key, {})
+    template = entry.get(lang) or entry.get("en") or key
+    return template.format(**kwargs) if kwargs else template
+
 USAGE_GUIDE_LAST_UPDATED = "2026-03-07"
 USAGE_GUIDE_CHANGELOG = [
     "Moved stress score interpretation into tooltip-based help icons for base_score/delta/stressed_score and removed verbose read columns.",
@@ -519,7 +553,7 @@ def _extract_json_object(text: str) -> str | None:
     return match.group(0)
 
 
-def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object]) -> tuple[str, list[str]]:
+def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object], output_language: str = "en") -> tuple[str, list[str]]:
     """Fallback summary and strategy when LLM generation is unavailable."""
     debug = result.get("debug", {}) if isinstance(result.get("debug", {}), dict) else {}
     score = int(result.get("score", 0))
@@ -560,13 +594,22 @@ def _build_fallback_summary_and_strategy(pair: str, result: dict[str, object]) -
         ),
     }
 
-    summary = (
-        f"你当前选择的是 {pair}（{category}），即 {base}/{quote}。{category_explanation.get(category, '')} "
-        f"当前风险评分为 {score}（{status}），处于 {regime}。"
-        f"宏观与新闻压力为 {macro_stress:.2f}，新闻情绪为 {sentiment:.2f}，"
-        f"市场微观结构显示波动率 {volatility:.4f}、点差 {spread_bps:.2f} bps。"
-        f"新闻来源为 {news_source}，Gemini 状态为 {gemini_status}。"
-    )
+    if output_language == "zh":
+        summary = (
+            f"你当前选择的是 {pair}（{category}），即 {base}/{quote}。{category_explanation.get(category, '')} "
+            f"当前风险评分为 {score}（{status}），处于 {regime}。"
+            f"宏观与新闻压力为 {macro_stress:.2f}，新闻情绪为 {sentiment:.2f}，"
+            f"市场微观结构显示波动率 {volatility:.4f}、点差 {spread_bps:.2f} bps。"
+            f"新闻来源为 {news_source}，Gemini 状态为 {gemini_status}。"
+        )
+    else:
+        summary = (
+            f"You selected {pair} ({category}), i.e., {base}/{quote}. {category_explanation.get(category, '')} "
+            f"Current risk score is {score} ({status}), indicating a {regime}. "
+            f"Macro/news stress is {macro_stress:.2f}, sentiment is {sentiment:.2f}, "
+            f"and microstructure shows volatility {volatility:.4f} with spread {spread_bps:.2f} bps. "
+            f"News source: {news_source}; Gemini status: {gemini_status}."
+        )
 
     strategies: list[str] = []
     if score >= 75:
@@ -610,6 +653,7 @@ def build_ai_summary_and_strategy(
     gemini_api_key: str,
     gemini_model: str,
     asset_profile: dict[str, str] | None = None,
+    output_language: str = "en",
 ) -> tuple[str, list[str], str]:
     """Generate complete AI summary and strategy via Gemini, fallback when unavailable."""
     debug = result.get("debug", {}) if isinstance(result.get("debug", {}), dict) else {}
@@ -621,7 +665,7 @@ def build_ai_summary_and_strategy(
     resolved_category = resolved_profile.get("detected_category", category)
 
     if not gemini_api_key:
-        summary, strategy = _build_fallback_summary_and_strategy(pair, result)
+        summary, strategy = _build_fallback_summary_and_strategy(pair, result, output_language=output_language)
         return summary, strategy, "fallback:no_api_key"
 
     context = {
@@ -645,18 +689,19 @@ def build_ai_summary_and_strategy(
         },
     }
 
+    language_instruction = "Chinese" if output_language == "zh" else "English"
     prompt = (
-        "你是专业多资产风险分析师。请仅输出JSON对象，不要Markdown，不要多余解释。"
-        "JSON格式必须是: "
+        "You are a professional multi-asset risk analyst. Output JSON only, no markdown, no extra commentary. "
+        "JSON schema must be: "
         '{"summary":"...","investment_strategy":["...","...","...","...","..."]}. '
-        "要求: "
-        "1) summary必须是完整自然语言段落，不要固定前缀，必须先讲清楚这个asset具体是什么；"
-        "若为股票，必须包含公司背景和近期走势；若为商品/加密/外汇，也必须分别说明该资产本质与近期走势；"
-        "若用户输入的symbol不在内置库，必须依据asset_profile中的解析结果说明最可能对应的资产；"
-        "再解释当前风险状态与核心驱动；"
-        "2) investment_strategy至少5条，且必须包含：进场时机、仓位管理、止损/止盈、加减仓条件、失效退出条件；"
-        "3) 内容要具体、务实、可执行。"
-        "\n\n输入数据:\n"
+        f"Write all output strictly in {language_instruction}. "
+        "Requirements: "
+        "1) summary must be a natural paragraph and must first explain what this asset is; "
+        "for stocks include company context and recent trend; for commodity/crypto/forex explain instrument nature and recent trend; "
+        "if symbol is not in built-ins, explain the most likely mapped asset from asset_profile; then explain current risk regime and key drivers. "
+        "2) investment_strategy must include at least 5 actionable bullets covering entry timing, position sizing, stop-loss/take-profit, scale-in/out conditions, and invalidation exit conditions. "
+        "3) keep content practical and execution-oriented."
+        "\n\nInput data:\n"
         + json.dumps(context, ensure_ascii=False)
     )
     body = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -699,14 +744,29 @@ def build_ai_summary_and_strategy(
         except (requests.RequestException, ValueError, json.JSONDecodeError, KeyError, TypeError):
             continue
 
-    summary, strategies = _build_fallback_summary_and_strategy(pair, result)
+    summary, strategies = _build_fallback_summary_and_strategy(pair, result, output_language=output_language)
     return summary, strategies, "fallback:model_error"
 
 
 st.set_page_config(page_title="RiskGuard MVP", layout="wide")
-st.title("RiskGuard MVP — Global Forex Fraud Detection & Risk Scoring")
-st.caption(f"Latest UI refresh (UTC): {datetime.now(ZoneInfo('UTC')).isoformat(timespec='seconds')}")
-st.info("AI auto-tuning is always ON: dynamic global news discovery + market data are automatically used in every analysis.")
+
+if "ui_lang" not in st.session_state:
+    st.session_state.ui_lang = "en"
+
+lang_left_col, lang_right_col = st.columns([8, 2])
+with lang_right_col:
+    selected_lang_label = st.selectbox(
+        t("language_label", st.session_state.ui_lang),
+        ["English", "中文"],
+        index=0 if st.session_state.ui_lang == "en" else 1,
+    )
+    st.session_state.ui_lang = "en" if selected_lang_label == "English" else "zh"
+
+UI_LANG = st.session_state.ui_lang
+
+st.title(t("app_title", UI_LANG))
+st.caption(t("app_caption", UI_LANG, timestamp=datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")))
+st.info(t("app_info", UI_LANG))
 
 if "forex_history" not in st.session_state:
     st.session_state.forex_history = []
@@ -742,11 +802,11 @@ with st.sidebar:
 
 tab_board, tab_analyze, tab_history, tab_assurance, tab_usage = st.tabs(
     [
-        "Live Multi-Asset Board",
-        "Analyze One Asset Pair",
-        "Risk History Timeline",
-        "AI Assurance & Audit",
-        "Usage Guide",
+        t("tab_board", UI_LANG),
+        t("tab_analyze", UI_LANG),
+        t("tab_history", UI_LANG),
+        t("tab_assurance", UI_LANG),
+        t("tab_usage", UI_LANG),
     ]
 )
 
@@ -984,13 +1044,22 @@ with tab_board:
             }
 
             def _scenario_tooltip_text(entry: dict[str, object]) -> str:
+                if UI_LANG == "zh":
+                    return (
+                        f"起因背景: {entry['origin_background']}\n"
+                        f"演化过程: {entry['progression']}\n"
+                        f"市场影响: {entry['impact']}\n"
+                        f"校准依据: {entry['calibration_basis']}\n"
+                        f"传导链路: {entry['transmission_channels']}\n"
+                        f"证据锚点: {entry['accuracy_evidence']}"
+                    )
                 return (
-                    f"起因背景: {entry['origin_background']}\n"
-                    f"演化过程: {entry['progression']}\n"
-                    f"市场影响: {entry['impact']}\n"
-                    f"校准依据: {entry['calibration_basis']}\n"
-                    f"传导链路: {entry['transmission_channels']}\n"
-                    f"证据锚点: {entry['accuracy_evidence']}"
+                    f"Origin background: {entry['origin_background']}\n"
+                    f"Progression: {entry['progression']}\n"
+                    f"Market impact: {entry['impact']}\n"
+                    f"Calibration basis: {entry['calibration_basis']}\n"
+                    f"Transmission channels: {entry['transmission_channels']}\n"
+                    f"Evidence anchors: {entry['accuracy_evidence']}"
                 )
 
             selected_for_tooltip = st.session_state.get("stress_scenario_selector", "2008 Global Financial Crisis")
@@ -1025,9 +1094,10 @@ with tab_board:
             )
 
             with st.expander("Test Engine", expanded=False):
-                st.markdown("#### Why this calculation")
+                st.markdown("#### Why this calculation" if UI_LANG == "en" else "#### 为什么这样计算")
                 st.markdown(
-                    """
+                    (
+-                    """
 - Engine uses two shock components to avoid underfitting or overfitting one-dimensional stress:
   1) `scenario_multiplier` captures volatility-regime escalation,
   2) `scenario_additive_shock` captures liquidity/contagion premium not explained by baseline score scaling alone.
@@ -1035,19 +1105,49 @@ with tab_board:
   `stressed_score = clamp((base_score * scenario_multiplier + scenario_additive_shock) * intensity, 0, 100)`.
 - `intensity` provides controllable replay of weaker/stronger shock realizations while preserving scenario structure.
                     """
+                        if UI_LANG == "en"
+                        else """
+- 引擎采用双冲击项，避免单维压力建模造成的欠拟合或过拟合：
+  1) `scenario_multiplier` 表示波动率状态切换放大，
+  2) `scenario_additive_shock` 表示基线缩放之外的流动性/传染溢价。
+- 最终有界变换：
+  `stressed_score = clamp((base_score * scenario_multiplier + scenario_additive_shock) * intensity, 0, 100)`。
+- `intensity` 用于按比例回放弱/强冲击，同时保持场景结构不变。
+                        """
+                    )
                 )
-                st.markdown("#### Scenario Rationale")
-                st.markdown(f"- **起因背景**: {scenario['origin_background']}")
-                st.markdown(f"- **演化过程**: {scenario['progression']}")
-                st.markdown(f"- **带来影响**: {scenario['impact']}")
-                st.markdown(f"- **传导链路**: {scenario['transmission_channels']}")
-                st.markdown("#### Calibration & Evidence")
-                st.markdown(f"- **Calibration basis**: {scenario['calibration_basis']}")
-                st.markdown(f"- **Evidence summary**: {scenario['evidence']}")
-                st.markdown(f"- **Why this is accurate enough for stress testing**: {scenario['accuracy_evidence']}")
+                st.markdown("#### Scenario Rationale" if UI_LANG == "en" else "#### 场景论证")
+                st.markdown(
+                    f"- **Origin background**: {scenario['origin_background']}" if UI_LANG == "en" else f"- **起因背景**: {scenario['origin_background']}"
+                )
+                st.markdown(
+                    f"- **Progression**: {scenario['progression']}" if UI_LANG == "en" else f"- **演化过程**: {scenario['progression']}"
+                )
+                st.markdown(
+                    f"- **Impact**: {scenario['impact']}" if UI_LANG == "en" else f"- **带来影响**: {scenario['impact']}"
+                )
+                st.markdown(
+                    f"- **Transmission channels**: {scenario['transmission_channels']}" if UI_LANG == "en" else f"- **传导链路**: {scenario['transmission_channels']}"
+                )
+                st.markdown("#### Calibration & Evidence" if UI_LANG == "en" else "#### 校准与证据")
+                st.markdown(
+                    f"- **Calibration basis**: {scenario['calibration_basis']}" if UI_LANG == "en" else f"- **校准依据**: {scenario['calibration_basis']}"
+                )
+                st.markdown(
+                    f"- **Evidence summary**: {scenario['evidence']}" if UI_LANG == "en" else f"- **证据摘要**: {scenario['evidence']}"
+                )
+                st.markdown(
+                    f"- **Why this is accurate enough for stress testing**: {scenario['accuracy_evidence']}"
+                    if UI_LANG == "en"
+                    else f"- **为何该方法在压力测试中足够准确**: {scenario['accuracy_evidence']}"
+                )
                 st.caption(
-                    "Evidence style follows market stylized facts (volatility clustering, spread widening, correlation convergence, jump-risk episodes) and model-consistency checks. "
-                    "This module is for risk stress replay and control-setting, not exact return forecasting."
+                    (
+                        "Evidence style follows market stylized facts (volatility clustering, spread widening, correlation convergence, jump-risk episodes) and model-consistency checks. "
+                        "This module is for risk stress replay and control-setting, not exact return forecasting."
+                        if UI_LANG == "en"
+                        else "证据采用市场风格化事实（波动聚集、点差走阔、相关性收敛、跳跃风险事件）和模型一致性校验。该模块用于风险压力回放与风控阈值设定，不用于精确收益预测。"
+                    )
                 )
 
             stressed_rows = []
@@ -1101,15 +1201,10 @@ with tab_board:
                     y="stressed_score",
                     color="category",
                     custom_data=["base_score", "delta"],
-                    title="Stress Scenario Impact (Stressed Score)",
+                    title=t("stress_bar_title", UI_LANG),
                 )
                 stressed_fig.update_traces(
-                    hovertemplate=(
-                        "<b>%{x}</b><br>"
-                        "Stressed Score: %{y:.2f} (越高越风险)<br>"
-                        "Base Score: %{customdata[0]:.2f} (当前风险基线)<br>"
-                        "Delta: %{customdata[1]:.2f} (情景冲击增量)<extra></extra>"
-                    )
+                    hovertemplate=t("stress_hover", UI_LANG)
                 )
                 stressed_fig.update_layout(height=360)
                 st.plotly_chart(stressed_fig, use_container_width=True)
@@ -1400,29 +1495,29 @@ with tab_analyze:
 
             radar_explanations = [
                 {
-                    "meaning": "近期市场波动强度（EWMA）",
-                    "impact": "越高代表短期不稳定性越强，风险分更容易被放大。",
-                    "how_to_read": "<35 常态；35-65 需谨慎；>65 建议降杠杆并缩短持仓周期。",
+                    "meaning": "Recent market volatility intensity (EWMA)" if UI_LANG == "en" else "近期市场波动强度（EWMA）",
+                    "impact": "Higher values indicate a less stable short-term regime and easier risk-score amplification." if UI_LANG == "en" else "越高代表短期不稳定性越强，风险分更容易被放大。",
+                    "how_to_read": "<35 normal; 35-65 caution; >65 consider lower leverage and shorter holding horizon." if UI_LANG == "en" else "<35 常态；35-65 需谨慎；>65 建议降杠杆并缩短持仓周期。",
                 },
                 {
-                    "meaning": "95%预期损失（尾部风险）",
-                    "impact": "衡量极端行情下的平均潜在损失，捕捉黑天鹅风险。",
-                    "how_to_read": "越高越需保守仓位和更紧止损，优先保护回撤。",
+                    "meaning": "95% expected shortfall (tail risk)" if UI_LANG == "en" else "95%预期损失（尾部风险）",
+                    "impact": "Measures average loss under extreme-tail scenarios and captures black-swan sensitivity." if UI_LANG == "en" else "衡量极端行情下的平均潜在损失，捕捉黑天鹅风险。",
+                    "how_to_read": "Higher values call for smaller size and tighter stops, with drawdown protection prioritized." if UI_LANG == "en" else "越高越需保守仓位和更紧止损，优先保护回撤。",
                 },
                 {
-                    "meaning": "流动性压力（点差代理）",
-                    "impact": "越高说明交易成本和滑点风险更高，执行质量下降。",
-                    "how_to_read": "高位时避免追单，优先限价单与分批成交。",
+                    "meaning": "Liquidity stress (spread proxy)" if UI_LANG == "en" else "流动性压力（点差代理）",
+                    "impact": "Higher values imply higher transaction cost and slippage risk, reducing execution quality." if UI_LANG == "en" else "越高说明交易成本和滑点风险更高，执行质量下降。",
+                    "how_to_read": "At high levels avoid chasing, prefer limit orders and staged execution." if UI_LANG == "en" else "高位时避免追单，优先限价单与分批成交。",
                 },
                 {
-                    "meaning": "传染路径强度（图谱路径风险）",
-                    "impact": "反映跨资产间风险传导强度，越高越容易被外部冲击带动。",
-                    "how_to_read": "高位时减少单一主题暴露，注意相关资产共振。",
+                    "meaning": "Contagion path intensity (graph path risk)" if UI_LANG == "en" else "传染路径强度（图谱路径风险）",
+                    "impact": "Represents cross-asset transmission strength; higher means stronger vulnerability to external shocks." if UI_LANG == "en" else "反映跨资产间风险传导强度，越高越容易被外部冲击带动。",
+                    "how_to_read": "At high levels reduce single-theme concentration and monitor correlation resonance." if UI_LANG == "en" else "高位时减少单一主题暴露，注意相关资产共振。",
                 },
                 {
-                    "meaning": "AML间接链路密度",
-                    "impact": "多条共享中介节点路径意味着更复杂的间接传染/资金链风险。",
-                    "how_to_read": "高位时加强来源核验与异常链路复核，缩小试探仓位。",
+                    "meaning": "AML indirect-chain density" if UI_LANG == "en" else "AML间接链路密度",
+                    "impact": "Multiple shared intermediary paths imply more complex indirect contagion/fund-flow risk." if UI_LANG == "en" else "多条共享中介节点路径意味着更复杂的间接传染/资金链风险。",
+                    "how_to_read": "At high levels tighten source validation and anomaly-chain review, and reduce probing size." if UI_LANG == "en" else "高位时加强来源核验与异常链路复核，缩小试探仓位。",
                 },
             ]
             radar_customdata = [
@@ -1439,10 +1534,10 @@ with tab_analyze:
                         customdata=radar_customdata + [radar_customdata[0]],
                         hovertemplate=(
                             "<b>%{theta}</b><br>"
-                            "Normalized Score: %{r:.1f}/100<br>"
-                            "含义: %{customdata[0]}<br>"
-                            "作用: %{customdata[1]}<br>"
-                            "怎么看: %{customdata[2]}<extra></extra>"
+                            f"{t('radar_norm', UI_LANG)}: %{{r:.1f}}/100<br>"
+                            f"{t('radar_meaning', UI_LANG)}: %{{customdata[0]}}<br>"
+                            f"{t('radar_impact', UI_LANG)}: %{{customdata[1]}}<br>"
+                            f"{t('radar_how', UI_LANG)}: %{{customdata[2]}}<extra></extra>"
                         ),
                     )
                 ]
@@ -1463,10 +1558,11 @@ with tab_analyze:
                 gemini_api_key=UI_GEMINI_API_KEY,
                 gemini_model=UI_GEMINI_MODEL,
                 asset_profile=resolved_profile,
+                output_language=UI_LANG,
             )
-            st.markdown("### AI Summary")
+            st.markdown(f"### {t('ai_summary', UI_LANG)}")
             st.write(summary_text)
-            st.markdown("### Investment Strategy")
+            st.markdown(f"### {t('ai_strategy', UI_LANG)}")
             for strategy_item in strategy_points:
                 st.write(f"- {strategy_item}")
             st.caption(f"Summary source: {summary_source}")
